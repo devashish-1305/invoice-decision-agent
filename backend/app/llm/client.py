@@ -4,7 +4,8 @@ What it guarantees:
   - structured output: the reply must validate against a Pydantic schema (messages.parse);
   - on a parse failure it retries ONCE (telling the model what was wrong), then raises LLMError, so the
     stage fails visibly instead of continuing with guessed data;
-  - a 30 s timeout per request, no hidden SDK retries;
+  - a 30 s timeout per request; the SDK itself retries transient failures (network errors, 429, 5xx) up to
+    twice. That is separate from the one retry below, which is only for output that fails the schema;
   - the call log (client.calls) lets the pipeline and the scenario runner count LLM usage.
 
 The API key is read from the environment (backend/.env) and is never logged or stored.
@@ -35,6 +36,8 @@ class LLMCall:
     attempts: int
     duration_ms: int
     ok: bool
+    input_tokens: int = 0     # from the API's usage report (0 if not reported)
+    output_tokens: int = 0
 
 
 def text_block(text: str) -> dict:
@@ -59,7 +62,7 @@ class LLMClient:
             key = os.environ.get("ANTHROPIC_API_KEY")
             if not key:
                 raise LLMError("ANTHROPIC_API_KEY is not set (add it to backend/.env)")
-            self._sdk_client = anthropic.Anthropic(api_key=key, timeout=self.settings.llm_timeout_s, max_retries=0)
+            self._sdk_client = anthropic.Anthropic(api_key=key, timeout=self.settings.llm_timeout_s, max_retries=2)
         return self._sdk_client
 
     def call(self, prompt: str, content: list[dict], schema: type[T]) -> T:
@@ -87,10 +90,13 @@ class LLMClient:
             if response.parsed_output is None:
                 problem = f"no parsable JSON (stop_reason={response.stop_reason})"
                 continue
-            self._log(prompt, attempt, started, ok=True)
+            usage = getattr(response, "usage", None)
+            self._log(prompt, attempt, started, ok=True, input_tokens=getattr(usage, "input_tokens", 0) or 0,
+                      output_tokens=getattr(usage, "output_tokens", 0) or 0)
             return response.parsed_output
         self._log(prompt, 2, started, ok=False)
         raise LLMError(f"{prompt}: reply did not match the schema after one retry: {problem}")
 
-    def _log(self, prompt, attempts, started, ok):
-        self.calls.append(LLMCall(prompt, attempts, int((time.perf_counter() - started) * 1000), ok))
+    def _log(self, prompt, attempts, started, ok, input_tokens=0, output_tokens=0):
+        self.calls.append(LLMCall(prompt, attempts, int((time.perf_counter() - started) * 1000), ok,
+                                  input_tokens, output_tokens))

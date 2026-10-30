@@ -9,7 +9,7 @@ Audit trail:    runs, stage_events, check_results, decisions. Written for EVERY 
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import JSON, Date, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import JSON, Date, DateTime, ForeignKey, Integer, LargeBinary, String, Text, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy.types import TypeDecorator
 
@@ -81,7 +81,8 @@ class Run(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     filename: Mapped[str] = mapped_column(String)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    status: Mapped[str] = mapped_column(String, default="running")   # running | completed | failed
+    status: Mapped[str] = mapped_column(String, default="running")   # queued | running | completed | failed
+    pdf: Mapped[bytes | None] = mapped_column(LargeBinary, deferred=True)   # the uploaded file, for the preview
     doc_type: Mapped[str | None] = mapped_column(String)
     vendor_name: Mapped[str | None] = mapped_column(String)
     invoice_number: Mapped[str | None] = mapped_column(String)

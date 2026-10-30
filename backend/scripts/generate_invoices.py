@@ -9,6 +9,7 @@ scenario sits where the PRD (section 6) says it should before any PDF is written
 """
 import csv
 import io
+import json
 import random
 import sys
 import time
@@ -80,23 +81,23 @@ def full_po(po_id):
 
 # lines = [(po_line_id, qty)] ; descriptions/prices come from the PO line unless overridden.
 SCENARIOS = [
-    dict(id="H", file="H_happy_path.pdf", vendor="V001", po="PO-2038", number="SOS/2627/0418",
+    dict(id="H", title="Happy path", file="H_happy_path.pdf", vendor="V001", po="PO-2038", number="SOS/2627/0418",
          date=date(2026, 10, 19), lines=full_po("PO-2038"), show_po=True,
          decision="Approve", check="none"),
-    dict(id="E1", file="E1_split_invoice_exceeds_po.pdf", vendor="V002", po="PO-2041", number="KIF-26-0233",
+    dict(id="E1", title="Split invoice exceeds PO", file="E1_split_invoice_exceeds_po.pdf", vendor="V002", po="PO-2041", number="KIF-26-0233",
          date=date(2026, 10, 22), show_po=True, decision="Hold", check="CUMULATIVE_PO",
          lines=[("POL-2041-1", 800), ("POL-2041-2", 1500), ("POL-2041-3", 750), ("POL-2041-4", 300)]),
-    dict(id="E2", file="E2_near_duplicate.pdf", vendor="V003", po="PO-2050", number="INV-1042A",
+    dict(id="E2", title="Near-duplicate invoice", file="E2_near_duplicate.pdf", vendor="V003", po="PO-2050", number="INV-1042A",
          date=date(2026, 10, 11), show_po=True, decision="Hold", check="DUPLICATE_NEAR",
          lines=[("POL-2050-1", 1500), ("POL-2050-2", 60), ("POL-2050-3", 40)]),
-    dict(id="E3", file="E3_scanned_no_po.pdf", vendor="V004", po="PO-2057", number="GFS/1026/088",
+    dict(id="E3", title="Scanned, no PO number", file="E3_scanned_no_po.pdf", vendor="V004", po="PO-2057", number="GFS/1026/088",
          date=date(2026, 10, 24), show_po=False, scanned=True, decision="Hold", check="PO_INFERRED",
          lines=full_po("PO-2057"),
          reword={"POL-2057-2": "Liquid Handwash 5 Ltr Can", "POL-2057-4": "Garbage Bags 30 Litre - Pack of 30"}),
-    dict(id="E4", file="E4_bank_changed.pdf", vendor="V005", po="PO-2063", number="MEC-INV-7731",
+    dict(id="E4", title="Bank details changed", file="E4_bank_changed.pdf", vendor="V005", po="PO-2063", number="MEC-INV-7731",
          date=date(2026, 10, 21), lines=full_po("PO-2063"), show_po=True, bank_account="9183402756",
          decision="Hold (high risk)", check="BANK_MATCH"),
-    dict(id="E5", file="E5_within_tolerance.pdf", vendor="V006", po="PO-2068", number="IFS/26-27/00415",
+    dict(id="E5", title="Within tolerance", file="E5_within_tolerance.pdf", vendor="V006", po="PO-2068", number="IFS/26-27/00415",
          date=date(2026, 10, 26), lines=full_po("PO-2068"), show_po=True,
          charges=[("Freight & Handling Charges", Decimal("2600.00"))],
          decision="Approve", check="none (within tolerance)"),
@@ -575,10 +576,44 @@ def print_summary(invoices):
         print("  " + "  ".join(val.ljust(widths[i]) if i in (0, 5, 6) else val.rjust(widths[i]) for i, val in enumerate(r)))
 
 
+def sample_description(inv):
+    """One line per scenario. Every number in it is computed from the seed data, not typed in."""
+    s = inv.spec
+    po_total = po_subtotal(s["po"])
+    pct = lambda x: f"{x.quantize(Decimal('0.1')).normalize():f}%"
+    utilisation = (approved_to_date(s["po"]) + inv.subtotal) / po_total * 100
+    if s["id"] == "H":
+        return f"Clean text invoice with the PO printed. Every line matches {s['po']}."
+    if s["id"] == "E1":
+        return f"Third invoice on {s['po']}: fine on its own, but cumulative billing reaches {pct(utilisation)} of the PO."
+    if s["id"] == "E2":
+        prior = next(h for h in HISTORY if h["vendor_id"] == s["vendor"] and Decimal(h["total"]) == inv.total)
+        days = (s["date"] - date.fromisoformat(prior["invoice_date"])).days
+        return f"{s['number']} repeats the vendor and amount of the approved {prior['invoice_number']}, dated {days} days earlier."
+    if s["id"] == "E3":
+        return "Image-only scan, slightly rotated and noisy, with no PO number. The AI must infer the PO from the lines."
+    if s["id"] == "E4":
+        return "Everything matches the PO, but the bank account on the invoice differs from the vendor master."
+    return f"A freight line puts the subtotal {pct(inv.subtotal / po_total * 100 - 100)} over the PO, inside the 2% tolerance."
+
+
+def write_manifest(invoices):
+    """samples.json: what GET /api/samples serves. Generated, so it can never drift from the PDFs."""
+    cards = []
+    for inv in invoices:
+        s = inv.spec
+        cards.append({"code": s["id"], "title": s["title"], "description": sample_description(inv), "file": s["file"],
+                      "vendor_id": inv.vendor["vendor_id"], "vendor": inv.vendor["name"],
+                      "po": s["po"] if s["show_po"] else None, "subtotal": str(inv.subtotal), "total": str(inv.total),
+                      "expected": s["decision"].replace(" (high risk)", " · high risk"), "expected_check": s["check"]})
+    (OUT / "samples.json").write_text(json.dumps(cards, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+
+
 def main():
     invoices = [build_invoice(s) for s in SCENARIOS]
     verify_seed(invoices)
     write_all(invoices)
+    write_manifest(invoices)
     verify_pdfs(invoices)
     print_summary(invoices)
 

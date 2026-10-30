@@ -1,0 +1,30 @@
+@import "@fontsource/inter/400.css";
+@import "@fontsource/inter/500.css";
+@import "@fontsource/inter/600.css";
+@import "@fontsource/jetbrains-mono/400.css";
+@import "@fontsource/jetbrains-mono/500.css";
+@import "@fontsource/jetbrains-mono/600.css";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html, body, #root { height: 100%; }
+  body { @apply bg-page font-sans text-[14px] text-body antialiased; }
+  button, a, input, select, summary { @apply outline-none; }
+  button:focus-visible, a:focus-visible, input:focus-visible, label:focus-within {
+    @apply ring-2 ring-accent ring-offset-2;
+  }
+}
+
+@layer components {
+  .card { @apply rounded-xl border border-line bg-white p-5; }
+  .label { @apply text-[11px] font-semibold uppercase tracking-[.04em] text-muted; }
+  .section-title { @apply text-base font-semibold text-ink; }
+  .btn-secondary { @apply inline-flex items-center justify-center rounded-lg bg-accent-bg px-3 py-2 text-[13px] font-medium text-accent-text hover:bg-[#E0E4FF]; }
+  .btn-outline { @apply inline-flex items-center justify-center rounded-lg border border-[#D0D5DD] bg-white px-3.5 py-2 text-[13px] font-medium text-body hover:bg-page; }
+  th { @apply text-left; }
+}
+
+@keyframes pulse-dot { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: .45; transform: scale(.8); } }
+.pulse-dot { animation: pulse-dot 1.1s ease-in-out infinite; }

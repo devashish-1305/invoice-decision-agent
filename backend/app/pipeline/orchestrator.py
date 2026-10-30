@@ -10,8 +10,8 @@ to the optional on_event callback (the SSE stream later). A stage that fails is 
 Missing data from a failed stage is never guessed: the rules see STAGE_FAILED and the run is a Hold.
 
 The money-critical part is ONE transaction: read the PO balance -> run the rules -> decide -> save checks and
-decision -> (Approve only) insert into the approved-invoice ledger -> commit. The transaction's first statement
-is a write (see db/session.py), so it holds the write lock before the balance is read and until it commits:
+decision -> (Approve only) insert into the approved-invoice ledger -> commit. Writer sessions begin with
+BEGIN IMMEDIATE (db/session.py), so the write lock is held before the balance is read and until the commit:
 two invoices cannot both consume the same PO headroom.
 """
 import time
@@ -92,11 +92,15 @@ def _timed_stage(rec: Recorder, failures: list[StageFailure], name: str, fn):
 
 
 def run_pipeline(session: Session, llm: LLMClient, pdf_bytes: bytes, filename: str, settings: Settings,
-                 today: date | None = None, on_event=None) -> RunResult:
+                 today: date | None = None, on_event=None, run_id: int | None = None) -> RunResult:
+    """run_id: pass the id of a run the API already created (status "queued"); otherwise one is created."""
     today = today or date.today()
     run_started = time.perf_counter()
     calls_before = len(llm.calls)
-    run_id = repo.create_run(session, filename)
+    if run_id is None:
+        run_id = repo.create_run(session, filename, pdf_bytes)
+    else:
+        repo.update_run(session, run_id, status="running")
     rec = Recorder(session, run_id, on_event)
     rec.commit()
     failures: list[StageFailure] = []
@@ -161,8 +165,8 @@ def run_pipeline(session: Session, llm: LLMClient, pdf_bytes: bytes, filename: s
     stage = "rules"                                         # which stage to blame if the transaction fails
     try:
         started = time.perf_counter()
-        rec.event("rules", "started")                       # FIRST statement is a write: takes the write lock
-                                                            # before the PO balance is read below
+        rec.event("rules", "started")                       # first statement of the transaction (write lock is
+                                                            # already held by BEGIN IMMEDIATE) ...
         ctx = decide_stage.build_context(session, settings, today, invoice, matched, failures)
         rule_checks = engine.run_rule_checks(ctx)
         repo.save_checks(session, run_id, rule_checks)

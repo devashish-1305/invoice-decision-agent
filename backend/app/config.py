@@ -49,6 +49,7 @@ class Settings:
     # --- storage ---
     database_url: str = f"sqlite:///{BACKEND_DIR / 'invoice_agent.db'}"
     data_dir: Path = BACKEND_DIR / "data"
+    frontend_dist: Path = BACKEND_DIR.parent / "frontend" / "dist"   # built React app, served by FastAPI
 
 
 def get_settings() -> Settings:

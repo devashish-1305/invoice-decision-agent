@@ -6,3 +6,5 @@ node_modules/
 frontend/dist/
 .DS_Store
 .pytest_cache/
+*.db-wal
+*.db-shm

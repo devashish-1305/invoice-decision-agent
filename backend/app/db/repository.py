@@ -51,8 +51,8 @@ def count_ledger(session: Session) -> int:
 
 
 # ------------------------------------------------------------------ audit trail
-def create_run(session: Session, filename: str) -> int:
-    run = m.Run(filename=filename)
+def create_run(session: Session, filename: str, pdf: bytes | None = None, status: str = "running") -> int:
+    run = m.Run(filename=filename, pdf=pdf, status=status)
     session.add(run)
     session.flush()
     return run.id

@@ -122,3 +122,33 @@ def test_the_decision_transaction_holds_the_write_lock_so_two_approvals_cannot_r
         first.commit()
         repo.create_run(second, "second.pdf")
         second.commit()
+
+
+def test_overlapping_runs_on_one_database_all_complete_without_lock_errors(tmp_path, settings):
+    """Regression: five runs in parallel threads used to hit 'database is locked' (lock-upgrade deadlock)."""
+    import threading
+    from app.db.seed import seed_if_missing
+    from app.db.session import init_db, make_engine, make_session_factory
+
+    engine = make_engine(f"sqlite:///{tmp_path / 'concurrent.db'}")
+    init_db(engine)
+    factory = make_session_factory(engine)
+    with factory() as session:
+        seed_if_missing(session, settings)
+
+    results = {}
+
+    def go(scenario):
+        with factory() as session:
+            results[scenario] = run_pipeline(session, scenario_llm(scenario), sample_pdf(scenario), f"{scenario}.pdf",
+                                             settings, today=TODAY)
+
+    threads = [threading.Thread(target=go, args=(s,)) for s in ("H", "E1", "E3", "E4", "E5")]
+    [t.start() for t in threads]
+    [t.join() for t in threads]
+
+    assert {s: (r.status, r.decision.decision) for s, r in results.items()} == {
+        "H": ("completed", "Approve"), "E1": ("completed", "Hold"), "E3": ("completed", "Hold"),
+        "E4": ("completed", "Hold"), "E5": ("completed", "Approve")}
+    with factory() as session:
+        assert repo.count_ledger(session) == SEEDED + 2      # exactly the two approvals

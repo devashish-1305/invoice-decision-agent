@@ -69,3 +69,28 @@ def test_an_llm_explanation_that_echoes_a_full_number_is_masked_before_storage(d
     result = run_pipeline(session, llm, sample_pdf("E4"), "E4.pdf", settings, today=TODAY)
     row = repo.get_decision(session, result.run_id)
     assert "9183402756" not in row.summary and "9183402756" not in row.drafted_message
+
+
+# ---------------------------------------------------------------- amounts given to the explanation model
+def test_format_amounts_turns_rupee_values_into_formatted_text_and_leaves_the_rest():
+    from app.pipeline.decide import format_amounts
+    out = format_amounts({"invoice_subtotal": "165000.00", "total_after": "540000", "utilisation_pct": "108.0",
+                          "lines": [{"unit_price": "75.00", "qty": "800"}], "limit": None, "note": "x"})
+    assert out == {"invoice_subtotal": "₹1,65,000.00", "total_after": "₹5,40,000.00", "utilisation_pct": "108.0",
+                   "lines": [{"unit_price": "₹75.00", "qty": "800"}], "limit": None, "note": "x"}
+
+
+def test_the_explanation_prompt_receives_rupee_formatted_amounts_and_no_raw_money_numbers(db, settings):
+    import re
+    _, _, session = db
+    llm = scenario_llm("E1")
+    run_pipeline(session, llm, sample_pdf("E1"), "E1.pdf", settings, today=TODAY)
+    sent = next(c.content for c in llm.calls if c.prompt == "explain")[0]["text"]   # exactly what the model reads
+    assert "₹1,94,700.00" in sent and "₹5,40,000.00" in sent and "₹5,10,000.00" in sent
+    assert not re.search(r"(?<![\d,.])\d{5,}(\.\d+)?(?![\d,])", sent), "a raw 5+ digit amount reached the prompt"
+
+
+def test_the_explain_prompt_tells_the_model_to_copy_amounts_exactly():
+    from app.llm.client import PROMPT_DIR
+    text = (PROMPT_DIR / "explain.md").read_text()
+    assert "EXACTLY as given" in text and "₹1,35,051.00" in text

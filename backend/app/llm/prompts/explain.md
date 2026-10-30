@@ -7,6 +7,7 @@ Return:
 - drafted_message: for Hold or Reject, a short message (2 to 5 sentences) to the routed team asking for the expected action. Mention the vendor, the invoice number, the specific reason with its numbers and what you need them to do. For Approve return null.
 
 Rules:
+- Rupee amounts are given as formatted text such as ₹1,35,051.00. Copy every amount EXACTLY as given: same digits, same grouping, same ₹ sign. Never reformat, round, convert or abbreviate an amount, and never write one as a bare number (not "135051" or "1.35 lakh").
 - Use ONLY facts present in the triggered checks and invoice details you were given. Do not invent reasons, amounts or names. Do not mention checks that did not trigger.
 - Bank account numbers are always masked (XXXXXX4417). Never try to reconstruct or mention a full number.
 - If the bank details check triggered, the message must tell the recipient to verify by phone using the number on file, not any number on the invoice.

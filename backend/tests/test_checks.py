@@ -127,6 +127,41 @@ def test_amount_tolerance_boundary_is_inclusive():
     assert c.check_amount_tolerance(ctx).result == "PASS"
 
 
+def test_amount_tolerance_message_reads_like_the_prd_example():
+    r = c.check_amount_tolerance(make_ctx("E1"))
+    assert r.message == "₹1,65,000 vs ₹1,65,000 of matched PO lines (+0.0%, limit +2%)"
+
+
+def test_amount_tolerance_compares_a_partial_invoice_with_the_quantities_it_bills_not_the_whole_po():
+    r = c.check_amount_tolerance(make_ctx("E1"))      # bills 165,000 of a 500,000 PO
+    assert r.result == "PASS" and r.evidence["matched_po_lines_value"] == Decimal("165000")
+
+
+def test_amount_tolerance_catches_inflated_prices_on_a_partial_invoice():
+    ctx = make_ctx("E1")
+    ctx.invoice.subtotal.value = Decimal("170000.00")  # +3.0% on what it bills; far below the whole-PO value
+    r = c.check_amount_tolerance(ctx)
+    assert r.result == "FAIL" and "(+3.0%, limit +2%)" in r.message
+
+
+def test_amount_tolerance_values_matched_lines_at_most_their_ordered_quantity():
+    ctx = make_ctx("H")
+    ctx.invoice.line_items[0].qty = Decimal("400")     # PO line 1 is 300 Ream @ 245: value is capped at 300
+    assert c.check_amount_tolerance(ctx).evidence["matched_po_lines_value"] == Decimal("111460")
+
+
+def test_amount_tolerance_does_not_count_unmatched_lines_as_matched_value():
+    ctx = make_ctx("H")
+    ctx.line_matches[0] = LineMatch(invoice_line_index=0, description="x", po_line_id=None, method="none")
+    r = c.check_amount_tolerance(ctx)                  # the unmatched line's 73,500 is in the subtotal but not the base
+    assert r.result == "FAIL" and r.evidence["matched_po_lines_value"] == Decimal("37960")
+
+
+def test_amount_tolerance_is_not_evaluated_when_no_line_matched():
+    ctx = make_ctx("H", line_matches=[])
+    assert c.check_amount_tolerance(ctx).result == "WARN"
+
+
 # ---------------------------------------------------------------- CUMULATIVE_PO
 def test_cumulative_po_pass():
     r = c.check_cumulative_po(make_ctx("E2"))  # 66% of PO after this invoice

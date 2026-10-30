@@ -141,24 +141,35 @@ def check_po_inferred(ctx: RuleContext) -> Check:
     return _pass("PO_INFERRED", "PO was stated on the invoice" if pm.method == "explicit" else "No PO inferred")
 
 
-def _matched_po_lines(ctx: RuleContext) -> dict:
-    by_id = {l.po_line_id: l for l in ctx.po.lines}
-    return {m.po_line_id: by_id[m.po_line_id] for m in ctx.line_matches if m.po_line_id in by_id}
+def _matched_lines_value(ctx: RuleContext) -> Decimal:
+    """What the matched PO lines are worth for the quantities this invoice bills: invoiced qty x PO unit price,
+    never more than the PO line's ordered qty. Unmatched invoice lines add nothing. (A partial invoice is compared
+    with the part of the PO it bills, not with the whole PO.)"""
+    po_lines = {l.po_line_id: l for l in ctx.po.lines}
+    billed: dict[str, Decimal] = defaultdict(Decimal)
+    for match in ctx.line_matches:
+        qty = ctx.invoice.line_items[match.invoice_line_index].qty
+        if match.po_line_id in po_lines and qty is not None:
+            billed[match.po_line_id] += qty
+    return sum((min(qty, po_lines[line_id].qty) * po_lines[line_id].unit_price for line_id, qty in billed.items()),
+               Decimal(0))
 
 
 def check_amount_tolerance(ctx: RuleContext) -> Check:
     subtotal = ctx.invoice.subtotal.value if ctx.invoice else None
     if ctx.po is None or subtotal is None:
         return _not_evaluated("AMOUNT_TOLERANCE", "no PO or no invoice subtotal")
-    matched_value = sum((l.value for l in _matched_po_lines(ctx).values()), Decimal(0))
+    matched_value = _matched_lines_value(ctx)
     if matched_value == 0:
         return _not_evaluated("AMOUNT_TOLERANCE", "no invoice line matched a PO line")
     tolerance = ctx.settings.tolerance_pct
     limit = matched_value * (1 + tolerance / PERCENT)
     variance = ((subtotal - matched_value) / matched_value * PERCENT).quantize(Decimal("0.1"))
     evidence = {"invoice_subtotal": subtotal, "matched_po_lines_value": matched_value, "limit": limit,
-                "variance_pct": variance, "tolerance_pct": tolerance}
-    text = f"{inr(subtotal)} invoiced vs {inr(matched_value)} on the matched PO lines ({variance:+}%, allowed +{tolerance}%)"
+                "variance_pct": variance, "tolerance_pct": tolerance,
+                "basis": "invoiced quantities at PO prices, capped at ordered quantity"}
+    text = (f"{inr(subtotal, compact=True)} vs {inr(matched_value, compact=True)} of matched PO lines "
+            f"({variance:+}%, limit +{_num(tolerance)}%)")
     if subtotal <= limit:
         return _pass("AMOUNT_TOLERANCE", text, evidence)
     return _check("AMOUNT_TOLERANCE", "FAIL", text, evidence, risk="medium")

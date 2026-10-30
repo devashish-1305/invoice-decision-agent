@@ -15,7 +15,7 @@ from app.config import Settings
 from app.llm.client import LLMClient, text_block
 from app.schemas import (ExtractedInvoice, LineMatch, LineMatchResponse, MatchResult, POInference, POMatch,
                          PORecord, ReferenceData, VendorMatch, VendorRecord)
-from app.util import norm_id, norm_text
+from app.util import inr, norm_id, norm_text, reformat_amounts
 
 
 @dataclass
@@ -55,18 +55,30 @@ def match_po(llm: LLMClient, invoice: ExtractedInvoice, vendor: VendorRecord | N
     candidates = [p for p in pos if vendor and p.vendor_id == vendor.vendor_id and p.status == "open"]
     if not candidates:
         return POMatch(po_id=None, method="none"), None
+    # Every rupee amount goes to the model already formatted (₹1,14,450.00); quantities stay plain numbers.
+    money = lambda x: inr(x) if x is not None else None
     payload = {
-        "invoice": {"date": invoice.invoice_date.value, "subtotal": invoice.subtotal.value,
-                    "lines": [{"description": l.description, "qty": l.qty, "unit_price": l.unit_price,
-                               "amount": l.amount} for l in invoice.line_items],
-                    "other_charges": [{"description": c.description, "amount": c.amount} for c in invoice.other_charges]},
-        "candidate_pos": [{"po_id": p.po_id, "po_date": p.po_date, "po_total": p.subtotal,
+        "invoice": {"date": invoice.invoice_date.value, "subtotal": money(invoice.subtotal.value),
+                    "lines": [{"description": l.description, "qty": l.qty, "unit_price": money(l.unit_price),
+                               "amount": money(l.amount)} for l in invoice.line_items],
+                    "other_charges": [{"description": c.description, "amount": money(c.amount)}
+                                      for c in invoice.other_charges]},
+        "candidate_pos": [{"po_id": p.po_id, "po_date": p.po_date, "po_total": money(p.subtotal),
                            "lines": [{"description": l.description, "qty": l.qty, "unit": l.unit,
-                                      "unit_price": l.unit_price} for l in p.lines]} for p in candidates],
+                                      "unit_price": money(l.unit_price)} for l in p.lines]} for p in candidates],
     }
-    answer = llm.call("infer_po", [text_block(json.dumps(payload, default=str, indent=1))], POInference)
+    answer = llm.call("infer_po", [text_block(json.dumps(payload, default=str, indent=1, ensure_ascii=False))], POInference)
+
+    # Presentation guard: the reasons are shown in the UI, so any raw amount the model still wrote is reformatted.
+    amounts = [invoice.subtotal.value] + [l.unit_price for l in invoice.line_items] + [l.amount for l in invoice.line_items] \
+        + [c.amount for c in invoice.other_charges] + [p.subtotal for p in candidates] \
+        + [l.unit_price for p in candidates for l in p.lines]
+    quantities = [l.qty for l in invoice.line_items] + [l.qty for p in candidates for l in p.lines]
+    answer_ranking = [c.model_copy(update={"reason": reformat_amounts(c.reason, amounts, quantities)})
+                      for c in answer.ranking]
+
     known = {p.po_id: p for p in candidates}
-    ranking = sorted((c for c in answer.ranking if c.po_id in known), key=lambda c: c.confidence, reverse=True)
+    ranking = sorted((c for c in answer_ranking if c.po_id in known), key=lambda c: c.confidence, reverse=True)
     if ranking and ranking[0].confidence >= settings.po_infer_min_confidence:
         top = ranking[0]
         return POMatch(po_id=top.po_id, method="inferred", confidence=top.confidence, reason=top.reason,

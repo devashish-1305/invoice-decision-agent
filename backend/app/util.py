@@ -20,8 +20,9 @@ def mask_text(text: str | None) -> str | None:
     return ACCOUNT_RUN.sub(lambda m: mask_account(m.group()), text)
 
 
-def inr(amount: Decimal) -> str:
-    """Indian digit grouping with the rupee sign: 540000 -> '₹5,40,000.00'."""
+def inr(amount: Decimal, compact: bool = False) -> str:
+    """Indian digit grouping with the rupee sign: 540000 -> '₹5,40,000.00'.
+    compact=True drops the paise when they are .00: '₹5,40,000'."""
     whole, frac = f"{Decimal(amount):.2f}".split(".")
     sign = ""
     if whole.startswith("-"):
@@ -32,7 +33,7 @@ def inr(amount: Decimal) -> str:
             groups.insert(0, head[-2:])
             head = head[:-2]
         whole = ",".join(([head] if head else []) + groups + [tail])
-    return f"{sign}₹{whole}.{frac}"
+    return f"{sign}₹{whole}" if compact and frac == "00" else f"{sign}₹{whole}.{frac}"
 
 
 def norm_text(text: str) -> str:
@@ -67,3 +68,24 @@ def mask_json(value):
     if isinstance(value, list):
         return [mask_json(v) for v in value]
     return value
+
+
+_NUMBER = re.compile(r"(?<![\w₹.,])(\d+(?:,\d+)*(?:\.\d+)?)(?!\w)")
+
+
+def reformat_amounts(text: str | None, amounts, exclude=()) -> str | None:
+    """Presentation guard for model-written text. Any bare number in `text` whose value equals one of the
+    rupee `amounts` we supplied ('114450', '114450.00', '1,14,450') is rewritten as ₹1,14,450.00. Numbers that
+    are also quantities (`exclude`), numbers inside identifiers (INV-1042, XXXXXX4417) and numbers already
+    carrying a ₹ are left alone. It only changes how an amount is written, never which amount."""
+    if not text:
+        return text
+    wanted = {Decimal(str(a)) for a in amounts if a is not None}
+    skip = {Decimal(str(q)) for q in exclude if q is not None}
+
+    def replace(match):
+        raw = match.group(1)
+        value = Decimal(raw.replace(",", ""))
+        return inr(value) if value in wanted and value not in skip else raw
+
+    return _NUMBER.sub(replace, text)

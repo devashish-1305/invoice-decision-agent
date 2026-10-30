@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useLocation, useParams } from "react-router-dom";
 import { ChecksPanel } from "../components/ChecksPanel";
-import { ErrorBox, Skeleton } from "../components/Common";
+import { ErrorBox, Notice, Skeleton } from "../components/Common";
 import { DecisionCard } from "../components/DecisionCard";
 import { ExtractPanel } from "../components/ExtractPanel";
 import { MatchPanel } from "../components/MatchPanel";
@@ -33,12 +33,10 @@ export default function LiveRun() {
     <div className="space-y-5">
       <RunHeader run={run} />
       {error && <ErrorBox>{error}</ErrorBox>}
-      {crash?.status === "failed" && (
-        <ErrorBox>
-          {sentence(crash.error)}
-          {run.decision?.decision === "Hold" ? " The invoice was held for manual processing; nothing was approved." : " The decision recorded before this stopped stands."}
-        </ErrorBox>
-      )}
+      {/* After a recorded decision the interruption is a notice: the decision itself did not fail. */}
+      {crash?.status === "failed" && (run.interruption === "after_decision"
+        ? <Notice>{sentence(crash.error)}</Notice>
+        : <ErrorBox>{sentence(crash.error)}</ErrorBox>)}
       <div className="flex items-start gap-5">
         <PipelinePanel run={run} selected={selected} onSelect={(row) => setChosen({ id, row })} />
         <div className="min-w-0 flex-1">

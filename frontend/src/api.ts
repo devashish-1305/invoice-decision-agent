@@ -49,6 +49,7 @@ export interface DecisionView {
 export interface RunDetail {
   id: number; filename: string; status: "queued" | "running" | "completed" | "failed";
   doc_type: "text" | "scanned" | null; created_at: string; file_size_bytes: number | null; has_document: boolean;
+  interruption: "before_decision" | "after_decision" | null;
   header: { vendor_name: string | null; vendor_gstin: string | null; invoice_number: string | null; invoice_date: string | null; subtotal: string | null; total: string | null; currency: string | null };
   stages: StageView[]; total_duration_ms: number; extracted: Extracted | null; match: MatchView | null;
   checks: Check[]; decision: DecisionView | null;

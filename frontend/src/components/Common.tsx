@@ -9,6 +9,11 @@ export function ErrorBox({ children }: { children: ReactNode }) {
   return <div role="alert" className="rounded-xl border border-bad-line bg-bad-bg px-4 py-3 text-[14px] text-bad">{children}</div>;
 }
 
+/** An amber notice: something unfinished, but nothing that undoes a recorded decision. */
+export function Notice({ children }: { children: ReactNode }) {
+  return <div role="status" className="rounded-xl border border-[#FEC84B] bg-warn-bg px-4 py-3 text-[14px] text-warn">{children}</div>;
+}
+
 export function ConfirmDialog(props: { open: boolean; title: string; body: string; confirmLabel: string; busy?: boolean; onConfirm: () => void; onCancel: () => void }) {
   const ref = useRef<HTMLDialogElement>(null);
   useEffect(() => {

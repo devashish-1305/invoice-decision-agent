@@ -56,6 +56,9 @@ function CheckBox({ check }: { check: Check }) {
 export function ChecksPanel({ run, which }: { run: RunDetail; which: "validate" | "rules" }) {
   const stage = stageOf(run, which);
   const checks = run.checks.filter((c) => (which === "validate" ? c.stage === "validate" : c.stage !== "validate"));
+  // The decision can be triggered by a Validate check (e.g. REQUIRED_FIELDS). Show those on the Rules panel too,
+  // so it never says "0 fail" while the decision card names a failing check.
+  const fromValidate = which === "rules" ? run.checks.filter((c) => c.stage === "validate" && c.result !== "PASS") : [];
   const fails = checks.filter((c) => c.result === "FAIL");
   const warns = checks.filter((c) => c.result === "WARN");
   const passes = checks.filter((c) => c.result === "PASS");
@@ -66,11 +69,18 @@ export function ChecksPanel({ run, which }: { run: RunDetail; which: "validate" 
       {stage?.status === "failed" && <div className="mt-3"><ErrorBox>{title} failed: {stage.error}</ErrorBox></div>}
       {stage?.status === "skipped" && <p className="mt-2 text-[13px] text-muted">Skipped because an earlier stage failed.</p>}
       {checks.length === 0 && (stage?.status === "pending" || stage?.status === "running") && <div className="mt-4 space-y-2"><Skeleton className="h-10 w-full" /><Skeleton className="h-10 w-full" /></div>}
-      {checks.length > 0 && (
+      {(checks.length > 0 || fromValidate.length > 0) && (
         <>
           <p className="mt-0.5 text-[13px] text-muted">
-            {checks.length} check{checks.length === 1 ? "" : "s"} · {passes.length} pass{warns.length ? ` · ${warns.length} warn` : ""}{fails.length ? ` · ${fails.length} fail` : ""} · no LLM involved
+            {checks.length} check{checks.length === 1 ? "" : "s"} · {passes.length} pass{warns.length ? ` · ${warns.length} warn` : ""}{fails.length ? ` · ${fails.length} fail` : ""}
+            {fromValidate.length > 0 && ` · from Validate: ${fromValidate.filter((c) => c.result === "FAIL").length} fail, ${fromValidate.filter((c) => c.result === "WARN").length} warn`} · no LLM involved
           </p>
+          {fromValidate.length > 0 && (
+            <div className="mt-4">
+              <p className="label mb-2">From Validate</p>
+              <div className="space-y-3">{[...fromValidate.filter((c) => c.result === "FAIL"), ...fromValidate.filter((c) => c.result === "WARN")].map((c) => <CheckBox key={`v-${c.code}`} check={c} />)}</div>
+            </div>
+          )}
           <div className="mt-4 space-y-3">{[...fails, ...warns].map((c) => <CheckBox key={c.code} check={c} />)}</div>
           {passes.length > 0 && (
             <ul className="mt-4 divide-y divide-divider">

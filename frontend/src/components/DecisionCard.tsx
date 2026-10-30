@@ -24,7 +24,7 @@ export function DecisionCard({ run }: { run: RunDetail }) {
   return (
     <section className="card !p-6" aria-label="Decision">
       <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
-        <DecisionBadge decision={d.decision} />
+        <DecisionBadge decision={d.decision} risk={d.risk_level} />
         {d.top_code ? <p className="text-[14px] text-body">Triggered by <span className="font-mono text-[13px] font-semibold text-ink">{d.top_code}</span></p>
           : approved && <p className="text-[14px] text-body">All {d.checks_total} checks passed</p>}
         {d.routed_to && <p className="text-[14px] text-body">Routed to <strong className="font-semibold text-ink">{d.routed_to}</strong></p>}

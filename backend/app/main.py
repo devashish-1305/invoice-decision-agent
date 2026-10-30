@@ -3,7 +3,7 @@
 One command serves everything after `npm run build`:   uvicorn app.main:app --port 8000
 (The Vite dev server and its /api proxy are for local development only.)
 """
-import dataclasses
+from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
@@ -18,8 +18,15 @@ from app.db.session import init_db, make_engine, make_session_factory
 from app.llm.client import LLMClient
 
 
+def ensure_sqlite_dir(url: str) -> None:
+    """DATABASE_URL may point into a directory that doesn't exist yet (e.g. /app/data on a fresh container)."""
+    if url.startswith("sqlite:///") and ":memory:" not in url:
+        Path(url[len("sqlite:///"):]).parent.mkdir(parents=True, exist_ok=True)
+
+
 def create_app(settings: Settings | None = None, llm_factory=None, today=None) -> FastAPI:
     settings = settings or get_settings()
+    ensure_sqlite_dir(settings.database_url)
     engine = make_engine(settings.database_url)                          # writer: BEGIN IMMEDIATE
     read_engine = make_engine(settings.database_url, immediate=False)    # reader: never takes the write lock
     init_db(engine)
@@ -38,6 +45,12 @@ def create_app(settings: Settings | None = None, llm_factory=None, today=None) -
 
     for module in (samples, runs, stream, reference):
         app.include_router(module.router, prefix="/api")
+
+    @app.get("/api/health")
+    def health():
+        """Liveness for the hosting platform. Touches nothing: no database, no LLM."""
+        return {"status": "ok"}
+
     mount_frontend(app, settings.frontend_dist)
     return app
 

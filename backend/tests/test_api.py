@@ -200,7 +200,10 @@ def test_a_crash_in_background_execution_is_recorded_as_a_failed_run_with_a_fail
     d = api.detail(run_id)
     assert d["status"] == "failed" and d["decision"]["decision"] == "Hold"
     failed = next(s for s in d["stages"] if s["stage"] == "pipeline")
-    assert failed["status"] == "failed" and "kaboom" in failed["error"]
+    assert failed["status"] == "failed"
+    assert failed["error"] == "Processing stopped unexpectedly before a decision — the invoice was held."
+    assert "kaboom" in failed["output"]["technical_error"] and "kaboom" not in failed["error"]   # kept, never shown
+    assert d["interruption"] == "before_decision"
     assert any(c["code"] == "STAGE_FAILED" and c["result"] == "FAIL" for c in d["checks"])
     assert api.client.get("/api/reference").json()["pos"][0]["approved_to_date"] == "0"   # nothing approved
     assert [e[1] for e in sse(api.client, f"/api/runs/{run_id}/stream")][-1] == "end"      # stream still terminates
@@ -378,7 +381,8 @@ def test_a_failed_explanation_says_the_decision_is_unaffected_not_that_the_invoi
 
 
 # ---------------------------------------------------------------- server restart while a run is in progress
-INTERRUPTED = "Processing was interrupted before it finished."
+BEFORE = "Processing was interrupted before a decision — the invoice was held."
+AFTER = "Processing was interrupted after the decision was recorded — the decision below stands."
 
 
 def _second_process(api):
@@ -387,54 +391,127 @@ def _second_process(api):
     return app, TestClient(app)
 
 
-def test_runs_left_queued_or_running_by_a_dead_process_become_failed_with_a_hold_on_restart(api, monkeypatch):
+def test_a_run_interrupted_BEFORE_a_decision_becomes_failed_and_held(api, monkeypatch):
     monkeypatch.setattr("app.api.runs.execute_run", lambda *a, **k: None)           # the process "dies" before working
     queued = api.client.post("/api/runs", json={"sample": "H"}).json()["run_id"]
     running = api.client.post("/api/runs", json={"sample": "E1"}).json()["run_id"]
-    with api.app.state.ctx.session_factory() as s:                                    # E1 had got as far as ingest
+    with api.app.state.ctx.session_factory() as s:                                    # E1 had got as far as the AI call
         repo.update_run(s, running, status="running")
         repo.add_stage_event(s, running, "ingest", "started")
         repo.add_stage_event(s, running, "ingest", "completed", output={"doc_type": "text", "page_count": 1}, duration_ms=5)
-        repo.add_stage_event(s, running, "extract", "started")                        # ... and was waiting on the AI
+        repo.add_stage_event(s, running, "extract", "started")
         s.commit()
     assert api.detail(queued)["status"] == "queued"
 
     app2, client2 = _second_process(api)
-    ingest_of_running = next(s for s in client2.get(f"/api/runs/{running}").json()["stages"] if s["stage"] == "ingest")
-    assert ingest_of_running["status"] == "completed"                                 # finished work is not rewritten
 
     for run_id in (queued, running):
         d = client2.get(f"/api/runs/{run_id}").json()
         pipeline = next(s for s in d["stages"] if s["stage"] == "pipeline")
         assert d["status"] == "failed"                                                # never "completed", never "running"
-        assert pipeline["status"] == "failed" and pipeline["error"] == INTERRUPTED
+        assert d["interruption"] == "before_decision"
+        assert pipeline["status"] == "failed" and pipeline["error"] == BEFORE
         assert "running" not in {s["status"] for s in d["stages"]}                    # no stage is left "running" forever
         assert d["decision"]["decision"] == "Hold" and d["decision"]["ledger_inserted"] is False
-        assert any(c["code"] == "STAGE_FAILED" and c["result"] == "FAIL" and INTERRUPTED in c["message"] for c in d["checks"])
+        assert [c["message"] for c in d["checks"] if c["code"] == "STAGE_FAILED" and c["result"] == "FAIL"] == [BEFORE]
         assert d["decision"]["summary"]                                               # something readable is shown
         assert read_new_events(app2.state.ctx, run_id, 0)[0] == "failed"              # so an open SSE stream can end
-    extract = next(s for s in client2.get(f"/api/runs/{running}").json()["stages"] if s["stage"] == "extract")
-    assert extract["status"] == "failed" and extract["error"] == INTERRUPTED           # the stage it was in did not complete
+    d = client2.get(f"/api/runs/{running}").json()
+    assert next(s for s in d["stages"] if s["stage"] == "ingest")["status"] == "completed"   # finished work is not rewritten
+    extract = next(s for s in d["stages"] if s["stage"] == "extract")
+    assert extract["status"] == "failed" and extract["error"] == BEFORE               # the stage it was in did not complete
     ids = {r["id"]: r for r in client2.get("/api/runs").json()["runs"]}
     assert ids[running]["decision"] == "Hold" and ids[running]["top_code"] == "STAGE_FAILED"
     assert client2.get("/api/runs").json()["kpis"]["held"] == 2
     assert sse(client2, f"/api/runs/{queued}/stream")[-1][1] == "end"                 # the stream closes instead of hanging
 
 
-def test_restart_leaves_finished_runs_alone_and_keeps_a_decision_that_was_already_committed(api):
-    done = api.run_sample("E1")                                                       # a finished Hold
-    approved = api.run_sample("H")                                                    # an Approve already in the ledger
-    with api.app.state.ctx.session_factory() as s:                                    # ... that died during "explain"
-        repo.update_run(s, approved, status="running")
+def interrupt_after_decision(api, code):
+    """Run a scenario to completion, then rewind the run to where a crash after the decision would have left it:
+    decision, checks and ledger committed; the explanation never written; the run still 'running'."""
+    from app.db import models as m
+    run_id = api.run_sample(code)
+    with api.app.state.ctx.session_factory() as s:
+        for event in s.query(m.StageEvent).filter_by(run_id=run_id, stage="explain").all():
+            s.delete(event)
+        row = s.get(m.DecisionRow, run_id)
+        row.summary = row.drafted_message = None
+        repo.update_run(s, run_id, status="running")
         s.commit()
-    before = api.detail(done)
+    return run_id
 
-    _, client2 = _second_process(api)
 
-    assert client2.get(f"/api/runs/{done}").json() == before                          # untouched
-    d = client2.get(f"/api/runs/{approved}").json()
-    assert d["status"] == "failed" and d["decision"]["decision"] == "Approve"          # the committed decision is not rewritten
-    assert d["decision"]["ledger_inserted"] is True
+def test_a_run_interrupted_AFTER_an_approval_keeps_the_decision_and_the_ledger_row_exactly(api):
+    run_id = interrupt_after_decision(api, "H")
+    with api.app.state.ctx.session_factory() as s:
+        ledger_before = [(r.invoice_number, r.po_id, str(r.subtotal), r.run_id) for r in
+                         s.query(__import__("app.db.models", fromlist=["x"]).ApprovedInvoice).all()]
+    before = api.detail(run_id)
+
+    app2, client2 = _second_process(api)
+
+    d = client2.get(f"/api/runs/{run_id}").json()
+    assert d["interruption"] == "after_decision" and d["status"] == "failed"
+    assert next(s for s in d["stages"] if s["stage"] == "pipeline")["error"] == AFTER
+    explain = next(s for s in d["stages"] if s["stage"] == "explain")
+    assert explain["status"] == "failed" and explain["error"] == AFTER                 # the unfinished post-decision stage
+    assert next(s for s in d["stages"] if s["stage"] == "decide")["status"] == "completed"
+    # the decision did not fail: unchanged decision, checks and ledger
+    assert d["decision"]["decision"] == "Approve" and d["decision"]["ledger_inserted"] is True
+    assert d["decision"]["risk_level"] == before["decision"]["risk_level"]
+    assert d["checks"] == before["checks"]                                              # no STAGE_FAILED added to an approval
+    assert not any(c["code"] == "STAGE_FAILED" and c["result"] == "FAIL" for c in d["checks"])
+    with app2.state.ctx.session_factory() as s:
+        ledger_after = [(r.invoice_number, r.po_id, str(r.subtotal), r.run_id) for r in
+                        s.query(__import__("app.db.models", fromlist=["x"]).ApprovedInvoice).all()]
+    assert ledger_after == ledger_before and ("SOS/2627/0418", "PO-2038", "111460.00", run_id) in ledger_after
     po = next(p for p in client2.get("/api/reference").json()["pos"] if p["po_id"] == "PO-2038")
-    assert po["approved_to_date"] == "111460.00"                                      # ledger and run still agree
-    assert any(c["code"] == "STAGE_FAILED" for c in d["checks"])
+    assert po["approved_to_date"] == "111460.00"
+    kpis = client2.get("/api/runs").json()["kpis"]
+    assert kpis["approved"] == 1 and kpis["auto_approved"] == "111460.00"              # it still counts as the approval it is
+    assert d["decision"]["summary"]                                                     # a readable summary is shown
+
+
+def test_a_run_interrupted_AFTER_a_hold_keeps_the_hold_and_adds_no_failure_check(api):
+    run_id = interrupt_after_decision(api, "E1")
+    before = api.detail(run_id)
+    _, client2 = _second_process(api)
+    d = client2.get(f"/api/runs/{run_id}").json()
+    assert d["interruption"] == "after_decision"
+    assert d["decision"]["decision"] == "Hold" and d["decision"]["top_code"] == "CUMULATIVE_PO"   # not "STAGE_FAILED"
+    assert d["checks"] == before["checks"] and next(s for s in d["stages"] if s["stage"] == "explain")["error"] == AFTER
+
+
+def test_restart_leaves_finished_runs_alone(api):
+    done = api.run_sample("E1")
+    before = api.detail(done)
+    _, client2 = _second_process(api)
+    assert client2.get(f"/api/runs/{done}").json() == before                           # untouched
+    assert before["interruption"] is None
+
+
+# ---------------------------------------------------------------- deployment support
+def test_health_endpoint_answers_ok_and_never_touches_the_llm(api):
+    response = api.client.get("/api/health")
+    assert response.status_code == 200 and response.json() == {"status": "ok"}
+    assert api.llm_factory_calls == 0
+
+
+def test_the_app_creates_a_missing_database_directory_and_seeds_it(tmp_path):
+    settings = dataclasses.replace(Settings(), database_url=f"sqlite:///{tmp_path / 'not' / 'yet' / 'there' / 'app.db'}",
+                                   frontend_dist=tmp_path / "dist")
+    client = TestClient(create_app(settings, llm_factory=lambda: None, today=lambda: TODAY))
+    assert (tmp_path / "not" / "yet" / "there" / "app.db").exists()
+    assert len(client.get("/api/reference").json()["vendors"]) == 6                    # seeded on first start
+
+
+def test_database_url_comes_from_the_environment(monkeypatch):
+    import importlib
+    import app.config as config
+    monkeypatch.setenv("DATABASE_URL", "sqlite:////tmp/somewhere/else.db")
+    importlib.reload(config)
+    try:
+        assert config.Settings().database_url == "sqlite:////tmp/somewhere/else.db"
+    finally:
+        monkeypatch.delenv("DATABASE_URL")
+        importlib.reload(config)

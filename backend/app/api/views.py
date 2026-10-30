@@ -169,11 +169,14 @@ def run_detail(session: Session, run_id: int) -> dict | None:
     row = repo.get_decision(session, run_id)
     lead = primary_check(check_rows) if row and row.decision != "Approve" else None
     decide_out = by_stage["decide"]["output"] or {}
+    pipeline = by_stage.get("pipeline")
+    interruption = (pipeline["output"] or {}).get("phase") if pipeline and pipeline["status"] == "failed" else None
     inv = extracted or {}
     return {
         "id": run.id, "filename": run.filename, "status": run.status, "doc_type": run.doc_type,
         "created_at": iso(run.created_at), "file_size_bytes": len(run.pdf) if run.pdf else None,
         "has_document": bool(run.pdf),
+        "interruption": interruption,   # null | "before_decision" (held) | "after_decision" (decision stands)
         "header": {"vendor_name": run.vendor_name, "vendor_gstin": (inv.get("vendor_gstin") or {}).get("value"),
                    "invoice_number": run.invoice_number, "invoice_date": (inv.get("invoice_date") or {}).get("value"),
                    "subtotal": money(run.subtotal), "total": money(run.total),

@@ -1,0 +1,21 @@
+# secrets and local state: never in the image
+**/.env
+**/.env.*
+**/*.db
+**/*.db-*
+**/.venv
+**/node_modules
+**/.pytest_cache
+**/__pycache__
+.git
+.gitignore
+.claude
+
+# rebuilt inside the image
+frontend/dist
+
+# not needed at runtime
+backend/tests
+backend/data/test_inputs
+Dockerfile
+.dockerignore

@@ -1,0 +1,15 @@
+# Render Blueprint: one web service, built from the Dockerfile at the repo root.
+services:
+  - type: web
+    name: invoice-decision-agent
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/health
+    envVars:
+      - key: LLM_PROVIDER
+        value: anthropic
+      - key: LLM_MODEL
+        value: claude-sonnet-5-5
+      - key: ANTHROPIC_API_KEY
+        sync: false          # you enter the key in the Render dashboard; it is never stored in this repo

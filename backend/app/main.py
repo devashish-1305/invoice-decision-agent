@@ -11,6 +11,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.api import reference, runs, samples, stream
 from app.api.deps import AppState
+from app.api.execution import recover_interrupted_runs
 from app.config import Settings, get_settings
 from app.db.seed import seed_if_missing
 from app.db.session import init_db, make_engine, make_session_factory
@@ -33,6 +34,7 @@ def create_app(settings: Settings | None = None, llm_factory=None, today=None) -
     if today:
         state.today = today
     app.state.ctx = state
+    recover_interrupted_runs(state)     # runs left "running" by a previous process become failed + Hold
 
     for module in (samples, runs, stream, reference):
         app.include_router(module.router, prefix="/api")

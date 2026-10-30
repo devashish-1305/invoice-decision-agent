@@ -69,7 +69,7 @@ export function ChecksPanel({ run, which }: { run: RunDetail; which: "validate" 
       {checks.length > 0 && (
         <>
           <p className="mt-0.5 text-[13px] text-muted">
-            {checks.length} checks · {passes.length} pass{warns.length ? ` · ${warns.length} warn` : ""}{fails.length ? ` · ${fails.length} fail` : ""} · no LLM involved
+            {checks.length} check{checks.length === 1 ? "" : "s"} · {passes.length} pass{warns.length ? ` · ${warns.length} warn` : ""}{fails.length ? ` · ${fails.length} fail` : ""} · no LLM involved
           </p>
           <div className="mt-4 space-y-3">{[...fails, ...warns].map((c) => <CheckBox key={c.code} check={c} />)}</div>
           {passes.length > 0 && (

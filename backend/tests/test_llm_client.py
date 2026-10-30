@@ -107,3 +107,38 @@ def test_extraction_prompt_demands_null_for_anything_not_visible():
     from app.llm.client import PROMPT_DIR
     text = (PROMPT_DIR / "extract.md").read_text()
     assert "null" in text and "evidence" in text and "confidence" in text and "page" in text
+
+
+# ---------------------------------------------------------------- plain messages for the UI (technical detail stays in str(error))
+def req():
+    return httpx2.Request("POST", "https://example.invalid")
+
+
+@pytest.mark.parametrize("error, plain", [
+    (anthropic.APITimeoutError(request=req()), "The AI service didn't respond."),
+    (anthropic.APIConnectionError(request=req()), "The AI service didn't respond."),
+    (anthropic.InternalServerError("overloaded", response=httpx2.Response(529, request=req()), body=None), "The AI service didn't respond."),
+    (anthropic.RateLimitError("slow down", response=httpx2.Response(429, request=req()), body=None), "The AI service is busy right now (rate limit reached)."),
+    (anthropic.AuthenticationError("bad key", response=httpx2.Response(401, request=req()), body=None), "The AI service rejected the request (API key or access problem)."),
+])
+def test_api_failures_carry_a_plain_user_message_and_keep_the_technical_detail(error, plain):
+    llm, _ = client(error)
+    with pytest.raises(LLMError) as e:
+        llm.call("explain", [], Explanation)
+    assert e.value.user_message == plain
+    assert type(error).__name__ in str(e.value)                  # technical detail is still there for logs
+
+
+def test_unusable_output_and_refusal_have_their_own_plain_messages(monkeypatch):
+    llm, _ = client(validation_error(), validation_error())
+    with pytest.raises(LLMError) as e:
+        llm.call("explain", [], Explanation)
+    assert e.value.user_message == "The AI's answer couldn't be used."
+    llm, _ = client(reply(parsed=None, stop_reason="refusal"))
+    with pytest.raises(LLMError) as e:
+        llm.call("explain", [], Explanation)
+    assert e.value.user_message == "The AI declined to read this document."
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    with pytest.raises(LLMError) as e:
+        LLMClient(Settings()).call("explain", [], Explanation)
+    assert "no API key" in e.value.user_message

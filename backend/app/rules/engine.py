@@ -52,6 +52,7 @@ ROUTES = [
     ("DUPLICATE_EXACT", "Vendor", "Tell the vendor this invoice duplicates one already paid"),
     ("VENDOR_APPROVED", "Vendor master / treasury team", "Confirm the vendor's status before any payment"),
     ("STAGE_FAILED", "Manual AP processing", "Process this invoice by hand; the automated run could not finish"),
+    ("PO_FOUND", "Procurement (PO owner)", "Confirm the correct PO number with the vendor, or raise the missing PO"),
     ("CUMULATIVE_PO", "Procurement (PO owner)", "Approve the variance or raise a PO amendment"),
     ("AMOUNT_TOLERANCE", "Procurement (PO owner)", "Approve the variance or raise a PO amendment"),
     ("LINE_MATCH", "Procurement (PO owner)", "Approve the variance or raise a PO amendment"),
@@ -62,9 +63,13 @@ DEFAULT_ROUTE = ("AP reviewer", "Review the failed checks and confirm or correct
 
 
 def route(checks: list[Check]) -> Routing | None:
-    triggered = {k.code for k in checks if k.triggered}
-    if not triggered:
+    triggered_checks = [k for k in checks if k.triggered]
+    if not triggered_checks:
         return None
+    # "Not evaluated" warnings are consequences of a real failure (no PO, no invoice number ...), so they must not
+    # decide who gets the exception: route on the real cause when there is one.
+    causes = [k for k in triggered_checks if not k.not_evaluated] or triggered_checks
+    triggered = {k.code for k in causes}
     for code, team, action in ROUTES:
         if code in triggered:
             return Routing(team=team, action=action)

@@ -237,6 +237,7 @@ class Check(BaseModel):
     action: Literal["hold", "reject"] | None = None   # what a non-PASS means for the decision
     risk: Risk = "low"
     stage: str = "rules"
+    not_evaluated: bool = False   # a WARN that only says "couldn't check this" because something upstream is missing
 
     @property
     def triggered(self) -> bool:

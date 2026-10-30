@@ -14,6 +14,7 @@ decision -> (Approve only) insert into the approved-invoice ledger -> commit. Wr
 BEGIN IMMEDIATE (db/session.py), so the write lock is held before the balance is read and until the commit:
 two invoices cannot both consume the same PO headroom.
 """
+import logging
 import time
 from dataclasses import dataclass
 from datetime import date
@@ -22,10 +23,10 @@ from sqlalchemy.orm import Session
 
 from app.config import Settings
 from app.db import repository as repo
-from app.llm.client import LLMClient
+from app.llm.client import LLMClient, LLMError
 from app.pipeline import decide as decide_stage
 from app.pipeline.extract import extract
-from app.pipeline.ingest import ingest
+from app.pipeline.ingest import IngestError, ingest
 from app.pipeline.match import Matched, match
 from app.pipeline.validate import validate
 from app.rules import engine
@@ -43,6 +44,20 @@ class RunResult:
     failures: list[StageFailure]
     llm_calls: int
     duration_ms: int
+
+
+log = logging.getLogger("invoice-agent")
+
+
+def failure_text(stage: str, error: Exception) -> str:
+    """What the UI shows for a failed stage. LLM failures get a plain sentence (the technical detail is kept in the
+    event payload and the server log); unreadable files already carry a plain message. A failed explanation does
+    not change the decision, so it is not described as "held"."""
+    if isinstance(error, IngestError):
+        return str(error)
+    if isinstance(error, LLMError):
+        return error.user_message if stage == "explain" else f"{error.user_message} The invoice was held; try again."
+    return f"{type(error).__name__}: {error}"
 
 
 class Recorder:
@@ -82,8 +97,11 @@ def _timed_stage(rec: Recorder, failures: list[StageFailure], name: str, fn):
         result, output = fn()
     except Exception as e:  # noqa: BLE001 - any failure must surface as a failed stage
         rec.rollback()
-        rec.event(name, "failed", error=f"{type(e).__name__}: {e}", duration_ms=_ms(started))
-        failures.append(StageFailure(stage=name, error=f"{type(e).__name__}: {e}"))
+        log.warning("stage %s failed: %s: %s", name, type(e).__name__, e)
+        shown = failure_text(name, e)
+        rec.event(name, "failed", output={"technical_error": f"{type(e).__name__}: {e}"}, error=shown,
+                  duration_ms=_ms(started))
+        failures.append(StageFailure(stage=name, error=shown))
         rec.commit()
         return None
     rec.event(name, "completed", output=output, duration_ms=_ms(started))

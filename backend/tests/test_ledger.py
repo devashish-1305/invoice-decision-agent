@@ -152,3 +152,31 @@ def test_overlapping_runs_on_one_database_all_complete_without_lock_errors(tmp_p
         "E4": ("completed", "Hold"), "E5": ("completed", "Approve")}
     with factory() as session:
         assert repo.count_ledger(session) == SEEDED + 2      # exactly the two approvals
+
+
+def test_the_same_invoice_submitted_twice_at_the_same_moment_approves_once_and_rejects_the_other(tmp_path, settings):
+    import threading
+    from app.db.seed import seed_if_missing
+    from app.db.session import init_db, make_engine, make_session_factory
+
+    engine = make_engine(f"sqlite:///{tmp_path / 'twins.db'}")
+    init_db(engine)
+    factory = make_session_factory(engine)
+    with factory() as session:
+        seed_if_missing(session, settings)
+    results = []
+
+    def go():
+        with factory() as session:
+            results.append(run_pipeline(session, scenario_llm("H"), sample_pdf("H"), "H.pdf", settings, today=TODAY))
+
+    threads = [threading.Thread(target=go) for _ in range(2)]
+    [t.start() for t in threads]
+    [t.join() for t in threads]
+
+    assert sorted(r.decision.decision for r in results) == ["Approve", "Reject"]
+    assert all(r.status == "completed" for r in results)
+    rejected = next(r for r in results if r.decision.decision == "Reject")
+    assert "DUPLICATE_EXACT" in rejected.decision.triggered_codes
+    with factory() as session:
+        assert repo.count_ledger(session) == SEEDED + 1                 # exactly one approval, never two

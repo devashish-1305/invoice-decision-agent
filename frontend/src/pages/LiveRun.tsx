@@ -8,6 +8,7 @@ import { MatchPanel } from "../components/MatchPanel";
 import { DecidePanel, IngestPanel } from "../components/OtherPanels";
 import { PipelinePanel } from "../components/PipelinePanel";
 import { RunHeader } from "../components/RunHeader";
+import { sentence } from "../format";
 import { ROWS, autoRow, stageOf, type RowKey } from "../stages";
 import { useRun } from "../useRun";
 
@@ -32,7 +33,12 @@ export default function LiveRun() {
     <div className="space-y-5">
       <RunHeader run={run} />
       {error && <ErrorBox>{error}</ErrorBox>}
-      {crash?.status === "failed" && <ErrorBox>The run stopped unexpectedly: {crash.error}. It was held for manual processing and nothing was approved.</ErrorBox>}
+      {crash?.status === "failed" && (
+        <ErrorBox>
+          {sentence(crash.error)}
+          {run.decision?.decision === "Hold" ? " The invoice was held for manual processing; nothing was approved." : " The decision recorded before this stopped stands."}
+        </ErrorBox>
+      )}
       <div className="flex items-start gap-5">
         <PipelinePanel run={run} selected={selected} onSelect={(row) => setChosen({ id, row })} />
         <div className="min-w-0 flex-1">

@@ -1,6 +1,7 @@
 """The HTTP API. The LLM is mocked (conftest.scenario_llm); everything else is real: routing, background
 execution, the database, the pipeline, SSE."""
 import dataclasses
+import io
 import json
 
 import pytest
@@ -24,10 +25,16 @@ class Api:
 
     def __init__(self, tmp_path):
         self.dist = tmp_path / "dist"
-        settings = dataclasses.replace(Settings(), database_url=f"sqlite:///{tmp_path / 'api.db'}", frontend_dist=self.dist)
+        self.settings = settings = dataclasses.replace(Settings(), database_url=f"sqlite:///{tmp_path / 'api.db'}",
+                                                       frontend_dist=self.dist)
         self.llm = None
-        self.app = create_app(settings, llm_factory=lambda: self.llm, today=lambda: TODAY)
+        self.llm_factory_calls = 0          # how many times a run asked for an LLM client (0 = no LLM involved)
+        self.app = create_app(settings, llm_factory=self._llm_factory, today=lambda: TODAY)
         self.client = TestClient(self.app)
+
+    def _llm_factory(self):
+        self.llm_factory_calls += 1
+        return self.llm
 
     def run_sample(self, code):
         self.llm = scenario_llm(code)
@@ -126,18 +133,43 @@ def pdf_with_pages(n):
     return buf.getvalue()
 
 
+def encrypted_pdf():
+    from reportlab.lib.pdfencrypt import StandardEncryption
+    buf = io.BytesIO()
+    c = canvas.Canvas(buf, encrypt=StandardEncryption("userpw", "ownerpw"))
+    c.drawString(72, 700, "Invoice 1234")
+    c.showPage()
+    c.save()
+    return buf.getvalue()
+
+
+def blank_pdf():
+    buf = io.BytesIO()
+    c = canvas.Canvas(buf)
+    c.showPage()
+    c.save()
+    return buf.getvalue()
+
+
 @pytest.mark.parametrize("files, message", [
-    ({"file": ("x.txt", b"hello", "text/plain")}, "Only PDF files"),
-    ({"file": ("x.pdf", b"", "application/pdf")}, "empty"),
-    ({"file": ("x.pdf", b"%PDF-1.4 not really", "application/pdf")}, "could not be read"),
-    ({"file": ("big.pdf", b"%PDF-" + b"0" * (10 * 1024 * 1024), "application/pdf")}, "larger than 10 MB"),
-    ({"file": ("six.pdf", pdf_with_pages(6), "application/pdf")}, "6 pages; the limit is 5"),
+    ({"file": ("x.txt", b"hello", "text/plain")}, "This isn't a PDF file. Upload the invoice as a PDF."),
+    ({"file": ("invoice.docx", b"PK\x03\x04" + b"0" * 100, "application/vnd.openxmlformats")}, "This isn't a PDF file."),
+    ({"file": ("photo.png", b"\x89PNG\r\n\x1a\n" + b"0" * 100, "image/png")}, "This isn't a PDF file."),
+    ({"file": ("photo.jpg", b"\xff\xd8\xff\xe0" + b"0" * 100, "image/jpeg")}, "This isn't a PDF file."),
+    ({"file": ("x.pdf", b"", "application/pdf")}, "This file is empty (0 bytes). Choose the invoice PDF and try again."),
+    ({"file": ("x.pdf", b"%PDF-1.4 not really", "application/pdf")}, "This PDF is damaged and can't be read."),
+    ({"file": ("cut.pdf", sample_pdf("H")[:3000], "application/pdf")}, "This PDF is damaged and can't be read."),
+    ({"file": ("big.pdf", b"%PDF-" + b"0" * (10 * 1024 * 1024), "application/pdf")}, "This file is larger than 10 MB. Upload a PDF under 10 MB."),
+    ({"file": ("six.pdf", pdf_with_pages(6), "application/pdf")}, "This PDF has 6 pages; the limit is 5. Upload a PDF of 5 pages or fewer"),
+    ({"file": ("locked.pdf", encrypted_pdf(), "application/pdf")}, "This file is password-protected. Upload an unlocked PDF."),
+    ({"file": ("blank.pdf", blank_pdf(), "application/pdf")}, "This PDF looks blank"),
     ({"other": ("x.pdf", b"%PDF-", "application/pdf")}, "No file received"),
 ])
-def test_invalid_uploads_get_a_clear_400_and_create_no_run(api, files, message):
+def test_invalid_uploads_get_a_clear_400_create_no_run_and_make_zero_llm_calls(api, files, message):
     response = api.client.post("/api/runs", files=files)
     assert response.status_code == 400 and message in response.json()["detail"]
     assert api.client.get("/api/runs").json()["runs"] == []
+    assert api.llm_factory_calls == 0                       # no run was started, so no LLM client was ever requested
 
 
 def test_bad_json_requests_get_400(api):
@@ -296,3 +328,113 @@ def test_spa_fallback_serves_index_and_assets_but_never_html_for_api_routes(tmp_
     assert client.get("/assets/app.js").text == "console.log(1)"
     assert client.get("/api/nope").status_code == 404 and "<html" not in client.get("/api/nope").text
     assert client.get("/%2e%2e/%2e%2e/etc/passwd").text == "<html>app</html>"          # no path traversal
+
+
+# ---------------------------------------------------------------- LLM / API failure: plain message, red stage, fail-safe Hold
+def llm_with_sdk_error(error):
+    from types import SimpleNamespace
+    from app.llm.client import LLMClient
+
+    def boom(**kwargs):
+        raise error
+    return LLMClient(Settings(), sdk_client=SimpleNamespace(messages=SimpleNamespace(parse=boom)))
+
+
+def test_an_ai_service_outage_shows_a_plain_message_a_failed_stage_and_a_fail_safe_hold(api):
+    import anthropic
+    import httpx2
+    api.llm = llm_with_sdk_error(anthropic.APITimeoutError(request=httpx2.Request("POST", "https://example.invalid")))
+    run_id = api.client.post("/api/runs", json={"sample": "H"}).json()["run_id"]
+    d = api.detail(run_id)
+    extract = next(s for s in d["stages"] if s["stage"] == "extract")
+    plain = "The AI service didn't respond. The invoice was held; try again."
+    assert d["status"] == "failed" and extract["status"] == "failed"
+    assert extract["error"] == plain and extract["summary"] == plain             # what the UI shows, no stack-trace text
+    assert "APITimeoutError" in extract["output"]["technical_error"]              # kept for the audit trail, not displayed
+    assert d["decision"]["decision"] == "Hold" and d["decision"]["ledger_inserted"] is False
+    assert any(c["code"] == "STAGE_FAILED" and c["result"] == "FAIL" for c in d["checks"])
+    assert [s["status"] for s in d["stages"] if s["stage"] in ("validate", "match")] == ["skipped", "skipped"]
+
+
+def test_a_rate_limit_is_explained_as_such(api):
+    import anthropic
+    import httpx2
+    request = httpx2.Request("POST", "https://example.invalid")
+    api.llm = llm_with_sdk_error(anthropic.RateLimitError("slow down", response=httpx2.Response(429, request=request), body=None))
+    d = api.detail(api.client.post("/api/runs", json={"sample": "H"}).json()["run_id"])
+    assert next(s for s in d["stages"] if s["stage"] == "extract")["error"] == \
+        "The AI service is busy right now (rate limit reached). The invoice was held; try again."
+
+
+def test_a_failed_explanation_says_the_decision_is_unaffected_not_that_the_invoice_was_held(api):
+    from app.llm.client import LLMError
+    from app.schemas import Explanation
+    api.llm = scenario_llm("H")
+    api.llm.responses[Explanation] = LLMError("explain: timeout")
+    d = api.detail(api.client.post("/api/runs", json={"sample": "H"}).json()["run_id"])
+    explain = next(s for s in d["stages"] if s["stage"] == "explain")
+    assert explain["status"] == "failed" and explain["error"] == "The AI service didn't respond."
+    assert d["decision"]["decision"] == "Approve"                                  # the rules' decision stands
+
+
+# ---------------------------------------------------------------- server restart while a run is in progress
+INTERRUPTED = "Processing was interrupted before it finished."
+
+
+def _second_process(api):
+    """A new server process on the same database."""
+    app = create_app(api.settings, llm_factory=lambda: None, today=lambda: TODAY)
+    return app, TestClient(app)
+
+
+def test_runs_left_queued_or_running_by_a_dead_process_become_failed_with_a_hold_on_restart(api, monkeypatch):
+    monkeypatch.setattr("app.api.runs.execute_run", lambda *a, **k: None)           # the process "dies" before working
+    queued = api.client.post("/api/runs", json={"sample": "H"}).json()["run_id"]
+    running = api.client.post("/api/runs", json={"sample": "E1"}).json()["run_id"]
+    with api.app.state.ctx.session_factory() as s:                                    # E1 had got as far as ingest
+        repo.update_run(s, running, status="running")
+        repo.add_stage_event(s, running, "ingest", "started")
+        repo.add_stage_event(s, running, "ingest", "completed", output={"doc_type": "text", "page_count": 1}, duration_ms=5)
+        repo.add_stage_event(s, running, "extract", "started")                        # ... and was waiting on the AI
+        s.commit()
+    assert api.detail(queued)["status"] == "queued"
+
+    app2, client2 = _second_process(api)
+    ingest_of_running = next(s for s in client2.get(f"/api/runs/{running}").json()["stages"] if s["stage"] == "ingest")
+    assert ingest_of_running["status"] == "completed"                                 # finished work is not rewritten
+
+    for run_id in (queued, running):
+        d = client2.get(f"/api/runs/{run_id}").json()
+        pipeline = next(s for s in d["stages"] if s["stage"] == "pipeline")
+        assert d["status"] == "failed"                                                # never "completed", never "running"
+        assert pipeline["status"] == "failed" and pipeline["error"] == INTERRUPTED
+        assert "running" not in {s["status"] for s in d["stages"]}                    # no stage is left "running" forever
+        assert d["decision"]["decision"] == "Hold" and d["decision"]["ledger_inserted"] is False
+        assert any(c["code"] == "STAGE_FAILED" and c["result"] == "FAIL" and INTERRUPTED in c["message"] for c in d["checks"])
+        assert d["decision"]["summary"]                                               # something readable is shown
+        assert read_new_events(app2.state.ctx, run_id, 0)[0] == "failed"              # so an open SSE stream can end
+    extract = next(s for s in client2.get(f"/api/runs/{running}").json()["stages"] if s["stage"] == "extract")
+    assert extract["status"] == "failed" and extract["error"] == INTERRUPTED           # the stage it was in did not complete
+    ids = {r["id"]: r for r in client2.get("/api/runs").json()["runs"]}
+    assert ids[running]["decision"] == "Hold" and ids[running]["top_code"] == "STAGE_FAILED"
+    assert client2.get("/api/runs").json()["kpis"]["held"] == 2
+    assert sse(client2, f"/api/runs/{queued}/stream")[-1][1] == "end"                 # the stream closes instead of hanging
+
+
+def test_restart_leaves_finished_runs_alone_and_keeps_a_decision_that_was_already_committed(api):
+    done = api.run_sample("E1")                                                       # a finished Hold
+    approved = api.run_sample("H")                                                    # an Approve already in the ledger
+    with api.app.state.ctx.session_factory() as s:                                    # ... that died during "explain"
+        repo.update_run(s, approved, status="running")
+        s.commit()
+    before = api.detail(done)
+
+    _, client2 = _second_process(api)
+
+    assert client2.get(f"/api/runs/{done}").json() == before                          # untouched
+    d = client2.get(f"/api/runs/{approved}").json()
+    assert d["status"] == "failed" and d["decision"]["decision"] == "Approve"          # the committed decision is not rewritten
+    assert d["decision"]["ledger_inserted"] is True
+    po = next(p for p in client2.get("/api/reference").json()["pos"] if p["po_id"] == "PO-2038")
+    assert po["approved_to_date"] == "111460.00"                                      # ledger and run still agree
+    assert any(c["code"] == "STAGE_FAILED" for c in d["checks"])

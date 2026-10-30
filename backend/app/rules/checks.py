@@ -30,7 +30,8 @@ def _pass(code, message, evidence=None, stage="rules") -> Check:
 
 
 def _not_evaluated(code, why, stage="rules") -> Check:
-    return _check(code, "WARN", f"Not evaluated: {why}", stage=stage)
+    return Check(code=code, result="WARN", action="hold", message=f"Not evaluated: {why}", stage=stage,
+                 not_evaluated=True)
 
 
 def _num(d: Decimal) -> str:

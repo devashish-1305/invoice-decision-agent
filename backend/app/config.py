@@ -47,7 +47,7 @@ class Settings:
     llm_effort: str = "low"                          # thinking depth: low keeps a run under 30 s
 
     # --- storage ---
-    database_url: str = f"sqlite:///{BACKEND_DIR / 'invoice_agent.db'}"
+    database_url: str = os.environ.get("DATABASE_URL", f"sqlite:///{BACKEND_DIR / 'invoice_agent.db'}")
     data_dir: Path = BACKEND_DIR / "data"
     frontend_dist: Path = BACKEND_DIR.parent / "frontend" / "dist"   # built React app, served by FastAPI
 

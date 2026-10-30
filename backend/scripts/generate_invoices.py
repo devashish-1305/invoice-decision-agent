@@ -289,7 +289,7 @@ STYLES = {
                  address=["Khasra 88, Manesar Industrial Model Township", "Gurugram, Haryana 122051"],
                  contact="Phone: 0124-2290 614",
                  columns=["sl", "desc", "qty", "rate", "amount"], headers={"desc": "Particulars"}, clear_gstin=True,
-                 date_fmt="%d/%m/%Y", po_label="", subtotal="Subtotal (excl. GST)", total="Invoice Total",
+                 date_fmt="%d/%m/%Y", po_label="Your PO No.", subtotal="Subtotal (excl. GST)", total="Invoice Total",
                  terms="E. & O.E.  Payment within 30 days."),
     "V005": dict(layout="classic", font="Helvetica", bold="Helvetica-Bold", accent=hexc("#8A1C2B"),
                  address=["No. 14, 2nd Cross, Peenya Industrial Area", "Bengaluru, Karnataka 560058"],
@@ -328,7 +328,8 @@ def place(c, flowable, x, y_top, width):
 
 def meta_pairs(inv, st):
     s = inv.spec
-    pairs = [("Invoice No.", s["number"]), ("Invoice Date", s["date"].strftime(st["date_fmt"]))]
+    pairs = [("Invoice No.", s["number"])] if s["number"] else []   # test inputs may omit the number
+    pairs.append(("Invoice Date", s["date"].strftime(st["date_fmt"])))
     if s["show_po"]:
         pairs.append((st["po_label"], s["po"]))
     return pairs
@@ -371,10 +372,15 @@ def totals_table(inv, st, width, extra_cmds=()):
     return Table(rows, colWidths=[width * 0.55, width * 0.45], style=cmds + list(extra_cmds))
 
 
-def footer(c, st, x, y, right_x):
+def footer(c, st, x, y, right_x, notes=None):
     c.setFont(st["font"], 8)
     c.setFillColor(colors.HexColor("#444444"))
     c.drawString(x, y, st["terms"])
+    if notes:  # a visible free-text line (used only by the prepared test inputs)
+        c.setFont(st["font"], 9)
+        c.setFillColor(colors.black)
+        c.drawString(x, y + 22, notes)
+        c.setFillColor(colors.HexColor("#444444"))
     c.drawRightString(right_x, y + 40, "Authorised Signatory")
     c.setFillColor(colors.black)
 
@@ -406,7 +412,7 @@ def layout_classic(c, inv, v, st):
                                           ("BACKGROUND", (0, 0), (-1, 0), tint(st["accent"], 0.8))]), m, y - 14, w)
     y = place(c, totals_table(inv, st, 200, [("LINEABOVE", (0, -1), (-1, -1), 0.8, colors.black)]), W - m - 200, y - 8, 200)
     text_lines(c, m, y + 50, ["Bank details for payment", *bank_lines(inv)], st["font"], 9, 12.5)
-    footer(c, st, m, 40 * mm, W - m)
+    footer(c, st, m, 40 * mm, W - m, inv.spec.get("notes"))
 
 
 def layout_band(c, inv, v, st):
@@ -441,7 +447,7 @@ def layout_band(c, inv, v, st):
     c.setStrokeColor(st["accent"])
     c.rect(m, y - 14, 220, 66, stroke=1, fill=0)
     text_lines(c, m + 8, y + 48, ["PAYMENT DETAILS", *bank_lines(inv)], st["font"], 8.5, 11)
-    footer(c, st, m, 40 * mm, W - m)
+    footer(c, st, m, 40 * mm, W - m, inv.spec.get("notes"))
 
 
 def layout_minimal(c, inv, v, st):
@@ -475,7 +481,7 @@ def layout_minimal(c, inv, v, st):
                                           ("LINEBELOW", (0, -1), (-1, -1), 0.8, colors.black)]), m, y - 14, w)
     y = place(c, totals_table(inv, st, 210, [("LINEABOVE", (0, -1), (-1, -1), 0.8, colors.black)]), W - m - 210, y - 8, 210)
     text_lines(c, m, y + 50, ["Please remit to:", *bank_lines(inv)], st["font"], 9.5, 12.5)
-    footer(c, st, m, 40 * mm, W - m)
+    footer(c, st, m, 40 * mm, W - m, inv.spec.get("notes"))
 
 
 def layout_tally(c, inv, v, st):
@@ -513,7 +519,7 @@ LAYOUTS = {"classic": layout_classic, "band": layout_band, "minimal": layout_min
 def render_pdf_bytes(inv):
     buf = io.BytesIO()
     c = canvas.Canvas(buf, pagesize=A4, invariant=1)  # invariant -> identical bytes on every run
-    c.setTitle(f"Invoice {inv.spec['number']}")
+    c.setTitle(f"Invoice {inv.spec['number'] or ''}".strip())
     st = STYLES[inv.vendor["vendor_id"]]
     LAYOUTS[st["layout"]](c, inv, inv.vendor, st)
     c.showPage()

@@ -106,4 +106,4 @@ def explain(llm: LLMClient, invoice: ExtractedInvoice | None, decision: Decision
 def fallback_summary(decision: Decision) -> str:
     """Used only when the explanation call fails. Plain, deterministic, clearly labelled."""
     reason = f" Main reason: {decision.top_reason}" if decision.top_reason else ""
-    return f"{decision.decision}.{reason} (Automatic summary: the AI explanation was unavailable.)"
+    return f"{decision.decision}.{reason} (Automatic summary: no AI explanation was written.)"

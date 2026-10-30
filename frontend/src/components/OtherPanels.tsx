@@ -1,5 +1,5 @@
 import type { RunDetail } from "../api";
-import { bytes } from "../format";
+import { bytes, sentence } from "../format";
 import { stageOf } from "../stages";
 import { ErrorBox } from "./Common";
 import { DecisionPill, Pill } from "./Pills";
@@ -33,8 +33,8 @@ export function DecidePanel({ run }: { run: RunDetail }) {
     <section className="card" aria-label="Decide and explain">
       <h2 className="section-title">Decide &amp; explain</h2>
       <p className="mt-0.5 text-[13px] text-muted">The decision comes from the checks. The AI only writes the explanation afterwards.</p>
-      {decide?.status === "failed" && <div className="mt-3"><ErrorBox>The decision step failed: {decide.error}. The invoice was held for manual processing; nothing was approved.</ErrorBox></div>}
-      {explain?.status === "failed" && <div className="mt-3"><ErrorBox>The explanation could not be written: {explain.error}. The decision above is unaffected.</ErrorBox></div>}
+      {decide?.status === "failed" && <div className="mt-3"><ErrorBox>The decision step failed: {sentence(decide.error)} The invoice was held for manual processing; nothing was approved.</ErrorBox></div>}
+      {explain?.status === "failed" && <div className="mt-3"><ErrorBox>The explanation could not be written: {sentence(explain.error)} The decision above is unaffected.</ErrorBox></div>}
       {d && (
         <dl className="mt-4 grid grid-cols-[150px_1fr] items-center gap-y-2 text-[13px]">
           <dt className="text-muted">Decision</dt><dd><DecisionPill decision={d.decision} risk={d.risk_level} long /></dd>

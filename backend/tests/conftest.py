@@ -48,8 +48,12 @@ def tf(value, conf=0.95):
 
 def mirror(scenario_id: str) -> ExtractedInvoice:
     """What a perfect extraction of the scenario's PDF looks like."""
-    spec = SPECS[scenario_id]
-    inv = gen.build_invoice(spec)
+    return extracted_from(gen.build_invoice(SPECS[scenario_id]))
+
+
+def extracted_from(inv) -> ExtractedInvoice:
+    """What a perfect reader returns for a generated invoice (a missing invoice number is a null field)."""
+    spec = inv.spec
     return ExtractedInvoice(
         vendor_name=tf(inv.vendor["name"]), vendor_gstin=tf(inv.vendor["gstin"]),
         invoice_number=tf(spec["number"]),

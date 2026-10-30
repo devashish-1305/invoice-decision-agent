@@ -128,7 +128,7 @@ def test_failed_explanation_is_shown_as_failed_but_the_decision_stands(db, setti
     result = run_pipeline(session, llm, sample_pdf("E4"), "E4.pdf", settings, today=TODAY)
     assert result.status == "failed" and result.decision.decision == "Hold" and result.explanation is None
     row = repo.get_decision(session, result.run_id)
-    assert "AI explanation was unavailable" in row.summary
+    assert "no AI explanation was written" in row.summary
 
 
 def test_unknown_vendor_is_rejected_and_never_reaches_the_ledger(db, settings):
@@ -141,3 +141,35 @@ def test_unknown_vendor_is_rejected_and_never_reaches_the_ledger(db, settings):
     result = run_pipeline(session, llm, sample_pdf("H"), "H.pdf", settings, today=TODAY)
     assert result.decision.decision == "Reject" and "VENDOR_APPROVED" in result.decision.triggered_codes
     assert repo.count_ledger(session) == 3
+
+
+# ---------------------------------------------------------------- missing fields never lead to Approve
+from app.schemas import DateField, ExtractedInvoice, MoneyField, TextField  # noqa: E402
+
+
+@pytest.mark.parametrize("field, empty, expected_code", [
+    ("vendor_gstin", TextField.empty, "VENDOR_AMBIGUOUS"),     # only the name is left: a name match never approves
+    ("invoice_number", TextField.empty, "REQUIRED_FIELDS"),
+    ("invoice_date", DateField.empty, "REQUIRED_FIELDS"),
+    ("subtotal", MoneyField.empty, "REQUIRED_FIELDS"),
+    ("total", MoneyField.empty, "REQUIRED_FIELDS"),
+    ("bank_account", TextField.empty, "BANK_MATCH"),
+    ("ifsc", TextField.empty, "BANK_MATCH"),
+])
+def test_a_missing_field_on_an_otherwise_perfect_invoice_holds_and_never_approves(db, settings, field, empty, expected_code):
+    _, _, session = db
+    llm = scenario_llm("H")                                    # H is the invoice that normally Approves
+    setattr(llm.responses[ExtractedInvoice], field, empty())
+    result = run_pipeline(session, llm, sample_pdf("H"), "H.pdf", settings, today=TODAY)
+    assert result.decision.decision == "Hold" and expected_code in result.decision.triggered_codes
+    assert repo.count_ledger(session) == 3                      # nothing consumed the PO
+    assert not any(c.result == "PASS" for c in result.checks if c.code == expected_code)
+
+
+def test_missing_fields_are_reported_as_null_so_the_ui_can_say_not_on_the_document(db, settings):
+    _, _, session = db
+    llm = scenario_llm("H")
+    llm.responses[ExtractedInvoice].invoice_number = TextField.empty()
+    result = run_pipeline(session, llm, sample_pdf("H"), "H.pdf", settings, today=TODAY)
+    extract = next(e for e in repo.get_events(session, result.run_id) if e.stage == "extract" and e.status == "completed")
+    assert extract.output["invoice"]["invoice_number"] == {"value": None, "confidence": 0.0, "evidence": None, "page": None}

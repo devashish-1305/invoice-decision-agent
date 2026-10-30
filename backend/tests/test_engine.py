@@ -58,3 +58,25 @@ def test_routing_table():
 
 def test_bank_mismatch_outranks_other_routes():
     assert engine.route([chk("PO_INFERRED", "WARN"), chk("BANK_MATCH", "FAIL")]).team == "Vendor master / treasury team"
+
+
+def test_not_evaluated_warnings_do_not_decide_the_route_when_a_real_cause_exists():
+    consequence = Check(code="DUPLICATE_EXACT", result="WARN", action="hold", message="Not evaluated: no invoice number",
+                        not_evaluated=True)
+    real = chk("REQUIRED_FIELDS", "FAIL")
+    assert engine.route([consequence, real]).team == "AP reviewer"                       # not "Vendor / tell them it duplicates"
+    assert engine.route([consequence]).team == "Vendor"                                  # but if it is all there is, still routed
+
+
+def test_a_printed_po_that_does_not_exist_goes_to_procurement_to_confirm_the_po():
+    consequences = [Check(code=c, result="WARN", action="hold", message="Not evaluated: no PO", not_evaluated=True)
+                    for c in ("LINE_MATCH", "AMOUNT_TOLERANCE", "CUMULATIVE_PO")]
+    route = engine.route([chk("PO_FOUND", "FAIL"), *consequences])
+    assert route.team == "Procurement (PO owner)" and "Confirm the correct PO number" in route.action
+
+
+def test_check_helper_marks_unevaluable_checks():
+    from conftest import make_ctx
+    from app.rules import checks as c
+    assert c.check_bank_match(make_ctx("H", vendor=None)).not_evaluated is True
+    assert c.check_bank_match(make_ctx("H")).not_evaluated is False

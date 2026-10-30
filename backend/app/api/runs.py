@@ -8,34 +8,15 @@ from app.api import views
 from app.api.deps import AppState, get_session, get_state
 from app.api.execution import execute_run
 from app.api.samples import load_samples
-from app.config import Settings
 from app.db import models as m
 from app.db import repository as repo
+from app.pipeline.ingest import IngestError, check_pdf
 
 router = APIRouter()
 
 
 def bad_request(message: str) -> HTTPException:
     return HTTPException(status_code=400, detail=message)
-
-
-def check_pdf(pdf: bytes, settings: Settings) -> None:
-    """Reject a bad upload with a clear message BEFORE any run is created."""
-    if not pdf:
-        raise bad_request("The file is empty.")
-    if len(pdf) > settings.max_upload_bytes:
-        raise bad_request(f"The file is larger than {settings.max_upload_bytes // (1024 * 1024)} MB.")
-    if not pdf.startswith(b"%PDF-"):
-        raise bad_request("Only PDF files are accepted.")
-    try:
-        with pymupdf.open(stream=pdf, filetype="pdf") as doc:
-            pages = doc.page_count
-    except Exception:  # noqa: BLE001
-        raise bad_request("That file could not be read as a PDF.")
-    if pages == 0:
-        raise bad_request("The PDF has no pages.")
-    if pages > settings.max_pages:
-        raise bad_request(f"The PDF has {pages} pages; the limit is {settings.max_pages}.")
 
 
 async def read_request(request: Request, state: AppState) -> tuple[bytes, str]:
@@ -63,7 +44,10 @@ async def read_request(request: Request, state: AppState) -> tuple[bytes, str]:
 @router.post("/runs", status_code=202)
 async def start_run(request: Request, background: BackgroundTasks, state: AppState = Depends(get_state)):
     pdf, filename = await read_request(request, state)
-    check_pdf(pdf, state.settings)
+    try:   # the same gate the pipeline uses: nothing that can't be processed gets a run, or an LLM call
+        await run_in_threadpool(check_pdf, pdf, state.settings)
+    except IngestError as e:
+        raise bad_request(str(e))
 
     def create_queued_run() -> int:
         with state.session_factory() as session:

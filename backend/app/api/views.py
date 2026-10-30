@@ -75,8 +75,9 @@ def _stage_summary(stage: str, status: str, output: dict | None, error: str | No
     if stage in ("validate", "rules"):
         checks = out.get("checks", [])
         bad = [c for c in checks if c["result"] != "PASS"]
-        return (f"{len(checks)} checks · all pass" if not bad else
-                f"{len(checks)} checks · " + ", ".join(f"{sum(c['result'] == r for c in checks)} {r.lower()}"
+        noun = f"{len(checks)} check{'s' if len(checks) != 1 else ''}"
+        return (f"{noun} · all pass" if not bad else
+                f"{noun} · " + ", ".join(f"{sum(c['result'] == r for c in checks)} {r.lower()}"
                                                        for r in ("FAIL", "WARN") if any(c["result"] == r for c in checks)))
     if stage == "match":
         po, lines = out["po"], out["lines"]

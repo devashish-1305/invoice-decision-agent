@@ -16,16 +16,20 @@ export default function NewRun() {
   const [busy, setBusy] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
   const input = useRef<HTMLInputElement>(null);
+  const starting = useRef(false);   // synchronous guard: a double click or a second drop can never start two runs
 
   useEffect(() => { api.samples().then(setSamples).catch((e) => setLoadError(e.message)); }, []);
 
   async function start(label: string, begin: () => Promise<{ run_id: number }>) {
+    if (starting.current) return;
+    starting.current = true;
     setBusy(label);
     try {
       const { run_id } = await begin();
       navigate(`/runs/${run_id}`);
     } catch (e) {
       setUploadError(e instanceof ApiError ? e.message : "Something went wrong");
+      starting.current = false;
       setBusy(null);
     }
   }
@@ -33,8 +37,10 @@ export default function NewRun() {
   function upload(file: File | undefined) {
     setUploadError(null);
     if (!file) return;
-    if (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")) return setUploadError("Only PDF files are accepted.");
-    if (file.size > MAX_BYTES) return setUploadError("The file is larger than 10 MB.");
+    if (starting.current) return;
+    if (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")) return setUploadError("This isn't a PDF file. Upload the invoice as a PDF.");
+    if (file.size === 0) return setUploadError("This file is empty (0 bytes). Choose the invoice PDF and try again.");
+    if (file.size > MAX_BYTES) return setUploadError("This file is larger than 10 MB. Upload a PDF under 10 MB.");
     start("upload", () => api.startUpload(file));
   }
 
@@ -51,9 +57,9 @@ export default function NewRun() {
 
       <label
         onDragOver={(e) => { e.preventDefault(); setDragging(true); }} onDragLeave={() => setDragging(false)} onDrop={onDrop}
-        className={`mt-6 flex cursor-pointer flex-col items-center rounded-xl border-[1.5px] border-dashed p-10 text-center ${dragging ? "border-accent bg-accent-bg" : "border-[#C7CBD4] bg-white"}`}
+        className={`mt-6 flex flex-col items-center rounded-xl border-[1.5px] border-dashed p-10 text-center ${busy ? "pointer-events-none opacity-60" : "cursor-pointer"} ${dragging ? "border-accent bg-accent-bg" : "border-[#C7CBD4] bg-white"}`}
       >
-        <input ref={input} type="file" accept="application/pdf,.pdf" className="sr-only" aria-label="Choose an invoice PDF" onChange={(e) => { upload(e.target.files?.[0]); e.target.value = ""; }} />
+        <input ref={input} type="file" accept="application/pdf,.pdf" className="sr-only" aria-label="Choose an invoice PDF" disabled={busy !== null} onChange={(e) => { upload(e.target.files?.[0]); e.target.value = ""; }} />
         <UploadIcon width={32} height={32} className="text-accent" />
         <span className="mt-3 text-[15px] font-medium text-ink">{busy === "upload" ? "Uploading…" : "Drop an invoice PDF here, or click to browse"}</span>
         <span className="mt-1 font-mono text-[12px] text-muted">PDF only · up to 10 MB · max 5 pages</span>

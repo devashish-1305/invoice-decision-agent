@@ -32,3 +32,9 @@ export function bytes(n: number | null | undefined): string {
 export function pct(value: string | number): string {
   return String(Number(value));
 }
+
+/** Make sure a message ends like a sentence, so another sentence can follow it. */
+export function sentence(text: string | null | undefined): string {
+  const t = (text ?? "").trim();
+  return t && !/[.!?]$/.test(t) ? `${t}.` : t;
+}

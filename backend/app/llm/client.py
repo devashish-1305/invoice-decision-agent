@@ -27,7 +27,12 @@ T = TypeVar("T", bound=BaseModel)
 
 
 class LLMError(Exception):
-    """The call failed (API error, refusal, or output that never matched the schema)."""
+    """The call failed (API error, refusal, or output that never matched the schema).
+    str(error) is the technical detail (for logs and tests); error.user_message is the plain sentence shown in the UI."""
+
+    def __init__(self, message: str, user_message: str = "The AI service didn't respond."):
+        super().__init__(message)
+        self.user_message = user_message
 
 
 @dataclass
@@ -38,6 +43,15 @@ class LLMCall:
     ok: bool
     input_tokens: int = 0     # from the API's usage report (0 if not reported)
     output_tokens: int = 0
+
+
+def _plain(error: Exception) -> str:
+    """The plain sentence for an Anthropic API failure."""
+    if isinstance(error, anthropic.RateLimitError):
+        return "The AI service is busy right now (rate limit reached)."
+    if isinstance(error, (anthropic.AuthenticationError, anthropic.PermissionDeniedError)):
+        return "The AI service rejected the request (API key or access problem)."
+    return "The AI service didn't respond."
 
 
 def text_block(text: str) -> dict:
@@ -58,10 +72,12 @@ class LLMClient:
     def _sdk(self):
         if self._sdk_client is None:
             if self.settings.llm_provider != "anthropic":
-                raise LLMError(f"Unsupported LLM_PROVIDER '{self.settings.llm_provider}' (only 'anthropic')")
+                raise LLMError(f"Unsupported LLM_PROVIDER '{self.settings.llm_provider}' (only 'anthropic')",
+                               "The AI service isn't set up correctly.")
             key = os.environ.get("ANTHROPIC_API_KEY")
             if not key:
-                raise LLMError("ANTHROPIC_API_KEY is not set (add it to backend/.env)")
+                raise LLMError("ANTHROPIC_API_KEY is not set (add it to backend/.env)",
+                               "The AI service isn't set up: no API key is configured.")
             self._sdk_client = anthropic.Anthropic(api_key=key, timeout=self.settings.llm_timeout_s, max_retries=2)
         return self._sdk_client
 
@@ -83,10 +99,10 @@ class LLMClient:
                 continue
             except anthropic.APIError as e:    # timeout, connection, auth, rate limit, 5xx ...
                 self._log(prompt, attempt, started, ok=False)
-                raise LLMError(f"{prompt}: Anthropic API error: {type(e).__name__}: {e}") from e
+                raise LLMError(f"{prompt}: Anthropic API error: {type(e).__name__}: {e}", _plain(e)) from e
             if response.stop_reason == "refusal":
                 self._log(prompt, attempt, started, ok=False)
-                raise LLMError(f"{prompt}: the model declined to answer")
+                raise LLMError(f"{prompt}: the model declined to answer", "The AI declined to read this document.")
             if response.parsed_output is None:
                 problem = f"no parsable JSON (stop_reason={response.stop_reason})"
                 continue
@@ -95,7 +111,8 @@ class LLMClient:
                       output_tokens=getattr(usage, "output_tokens", 0) or 0)
             return response.parsed_output
         self._log(prompt, 2, started, ok=False)
-        raise LLMError(f"{prompt}: reply did not match the schema after one retry: {problem}")
+        raise LLMError(f"{prompt}: reply did not match the schema after one retry: {problem}",
+                       "The AI's answer couldn't be used.")
 
     def _log(self, prompt, attempts, started, ok, input_tokens=0, output_tokens=0):
         self.calls.append(LLMCall(prompt, attempts, int((time.perf_counter() - started) * 1000), ok,

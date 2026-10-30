@@ -68,6 +68,7 @@ def po_subtotal(po_id):
 
 
 def approved_to_date(po_id):
+    """PO consumption = sum of approved SUBTOTALS (tax-exclusive). CUMULATIVE_PO uses this."""
     return sum((Decimal(h["subtotal"]) for h in HISTORY if h["po_id"] == po_id), Decimal(0))
 
 
@@ -193,7 +194,8 @@ def verify_seed(invoices):
     # History rows are internally consistent and their quantities fit the PO lines.
     for h in HISTORY:
         sub, tax, tot = Decimal(h["subtotal"]), Decimal(h["tax_amount"]), Decimal(h["total"])
-        check(money(sub * GST_RATE) == tax and sub + tax == tot, f"{h['invoice_number']}: history tax/total inconsistent")
+        # subtotal is tax-exclusive (feeds CUMULATIVE_PO); total includes GST (feeds DUPLICATE_NEAR)
+        check(money(sub * GST_RATE) == tax and sub + tax == tot and tot > sub, f"{h['invoice_number']}: history subtotal/tax/total inconsistent")
         qtys = SEEDED_QTYS[h["invoice_number"]]
         calc = sum(Decimal(q) * Decimal(PO_LINES[k]["unit_price"]) for k, q in qtys)
         check(calc == sub, f"{h['invoice_number']}: history subtotal {sub} != quantities {calc}")
@@ -217,7 +219,7 @@ def verify_seed(invoices):
         check(inv.total == inv.subtotal + inv.tax, f"{sid}: arithmetic")
         check((inv.bank_account != vendor["bank_account"]) == (sid == "E4"), f"{sid}: bank account vs master")
         check(s.get("show_po", False) == (sid != "E3"), f"{sid}: PO reference printing")
-        # near-duplicate: same vendor, total within 0.5%, date within 30 days
+        # near-duplicate compares TOTALS (incl. GST): same vendor, total within 0.5%, date within 30 days
         for h in HISTORY:
             if h["vendor_id"] != vendor["vendor_id"]:
                 continue
@@ -285,7 +287,7 @@ STYLES = {
     "V004": dict(layout="minimal", font="Times-Roman", bold="Times-Bold", accent=hexc("#000000"),
                  address=["Khasra 88, Manesar Industrial Model Township", "Gurugram, Haryana 122051"],
                  contact="Phone: 0124-2290 614",
-                 columns=["sl", "desc", "qty", "rate", "amount"], headers={"desc": "Particulars"},
+                 columns=["sl", "desc", "qty", "rate", "amount"], headers={"desc": "Particulars"}, clear_gstin=True,
                  date_fmt="%d/%m/%Y", po_label="", subtotal="Subtotal (excl. GST)", total="Invoice Total",
                  terms="E. & O.E.  Payment within 30 days."),
     "V005": dict(layout="classic", font="Helvetica", bold="Helvetica-Bold", accent=hexc("#8A1C2B"),
@@ -447,8 +449,11 @@ def layout_minimal(c, inv, v, st):
     w = W - 2 * m
     c.setFont(st["bold"], 19)
     c.drawCentredString(W / 2, H - m - 6, v["name"])
-    c.setFont(st["font"], 9.5)
     for i, line in enumerate([*st["address"], f"GSTIN: {v['gstin']}", st["contact"]]):
+        if st.get("clear_gstin") and line.startswith("GSTIN"):
+            c.setFont("Helvetica-Bold", 11.5)  # scanned invoice: identity field must survive the scan
+        else:
+            c.setFont(st["font"], 9.5)
         c.drawCentredString(W / 2, H - m - 22 - i * 12.5, line)
     y = H - m - 22 - 4 * 12.5 - 6
     c.setStrokeColor(colors.black)
@@ -517,13 +522,13 @@ def render_pdf_bytes(inv):
 
 def scan_effect(pdf_bytes, out_path, seed=7):
     """Render to an image, rotate slightly, add noise, save as an image-only PDF (no text layer)."""
-    pix = pymupdf.open(stream=pdf_bytes, filetype="pdf")[0].get_pixmap(dpi=150)
+    pix = pymupdf.open(stream=pdf_bytes, filetype="pdf")[0].get_pixmap(dpi=200)
     img = Image.frombytes("RGB", (pix.width, pix.height), pix.samples).convert("L")
     img = img.rotate(1.6, resample=Image.BICUBIC, fillcolor=226)  # slightly crooked on the scanner bed
-    img = img.filter(ImageFilter.GaussianBlur(0.6))
+    img = img.filter(ImageFilter.GaussianBlur(0.5))
     noise = Image.frombytes("L", img.size, random.Random(seed).randbytes(img.width * img.height))
     fixed = time.struct_time((2026, 10, 1, 0, 0, 0, 3, 274, 0))  # fixed timestamps keep the file byte-identical on every run
-    Image.blend(img, noise, 0.12).save(out_path, "PDF", resolution=150, creationDate=fixed, modDate=fixed)
+    Image.blend(img, noise, 0.08).save(out_path, "PDF", resolution=200, creationDate=fixed, modDate=fixed)
 
 
 def write_all(invoices):

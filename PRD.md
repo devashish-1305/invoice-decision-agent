@@ -72,7 +72,7 @@ Every stage writes its input, output, duration and status to the DB and streams 
 | `PO_INFERRED` | PO was inferred, not stated | WARN (hold) — always confirm inferred POs |
 | `AMOUNT_TOLERANCE` | Invoice subtotal (tax-exclusive) ≤ value of matched PO lines × (1 + 2%) | over → FAIL (hold) |
 | `CUMULATIVE_PO` | (approved-to-date on this PO + this invoice subtotal) ≤ PO subtotal × (1 + 2%) | exceeds → FAIL (hold), evidence shows utilisation % |
-| `LINE_MATCH` | Every product line maps to a PO line; qty ≤ PO qty remaining; unit price within 2% (freight/other charges exempt) | mismatch → FAIL (hold) |
+| `LINE_MATCH` | Every product line maps to a PO line; qty ≤ that PO line's ordered qty (this invoice alone — consumption across invoices is `CUMULATIVE_PO`'s job); unit price within 2% (freight/other charges exempt) | mismatch → FAIL (hold) |
 | `VENDOR_AMBIGUOUS` | Vendor matched by name only, or more than one candidate | FAIL (hold) |
 | `DUPLICATE_EXACT` | Same vendor + same invoice number already approved | FAIL (reject) |
 | `DUPLICATE_NEAR` | Same vendor, total within 0.5%, date within 30 days, invoice number similar (normalised edit distance, e.g. `INV-1042` vs `INV-1042A`) | FAIL (hold, "probable duplicate of …" — could be legitimate, so a human confirms) |

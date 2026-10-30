@@ -1,0 +1,27 @@
+po_line_id,po_id,line_no,description,hsn,qty,unit,unit_price
+POL-2038-1,PO-2038,1,A4 Copier Paper 75 GSM (500 sheets),4802,300,Ream,245.00
+POL-2038-2,PO-2038,2,Ball Pen Blue 0.7 mm (Box of 50),9608,60,Box,310.00
+POL-2038-3,PO-2038,3,Stapler Pins 24/6 (Box of 1000),8305,120,Box,38.00
+POL-2038-4,PO-2038,4,Whiteboard Marker Assorted (Pack of 10),9608,80,Pack,185.00
+POL-2041-1,PO-2041,1,"Hex Bolt M12 x 60 mm, Zinc Plated",7318,2000,Nos,75.00
+POL-2041-2,PO-2041,2,"Hex Nut M12, Zinc Plated",7318,4000,Nos,20.00
+POL-2041-3,PO-2041,3,"Flat Washer M12, Zinc Plated",7318,5000,Nos,8.00
+POL-2041-4,PO-2041,4,Wedge Anchor 16 mm x 150 mm,7318,1000,Nos,230.00
+POL-2050-1,PO-2050,1,5-Ply Corrugated Box 18 x 12 x 10 in,4819,3000,Nos,42.00
+POL-2050-2,PO-2050,2,Bubble Wrap Roll 1 m x 100 m,3920,150,Roll,610.00
+POL-2050-3,PO-2050,3,BOPP Packing Tape 48 mm x 100 m (Carton of 72),3919,100,Carton,540.00
+POL-2050-4,PO-2050,4,Stretch Film 500 mm x 250 m,3920,200,Roll,480.00
+POL-2057-1,PO-2057,1,Floor Cleaner Concentrate 5 L Can,3402,80,Can,420.00
+POL-2057-2,PO-2057,2,Liquid Hand Wash 5 L Can,3401,60,Can,310.00
+POL-2057-3,PO-2057,3,Toilet Cleaner 1 L Bottle,3402,150,Bottle,95.00
+POL-2057-4,PO-2057,4,Garbage Bags 30 L (Pack of 30),3923,400,Pack,120.00
+POL-2061-1,PO-2061,1,Housekeeping Uniform Set (Shirt + Trouser),6211,40,Set,1150.00
+POL-2061-2,PO-2061,2,Nitrile Safety Gloves (Pair),4015,200,Pair,85.00
+POL-2061-3,PO-2061,3,Janitorial Cleaning Trolley,9603,6,Nos,7800.00
+POL-2063-1,PO-2063,1,MCB 32 A Double Pole,8536,120,Nos,385.00
+POL-2063-2,PO-2063,2,"2.5 sq mm Copper Cable FR, 90 m Coil",8544,45,Coil,2650.00
+POL-2063-3,PO-2063,3,LED Batten Light 20 W,9405,200,Nos,340.00
+POL-2063-4,PO-2063,4,Modular Switch 6 A,8536,300,Nos,72.00
+POL-2068-1,PO-2068,1,Ergonomic Office Chair (Mesh Back),9401,40,Nos,3200.00
+POL-2068-2,PO-2068,2,Steel Filing Cabinet 4-Drawer,9403,12,Nos,4500.00
+POL-2068-3,PO-2068,3,Adjustable Footrest,9403,30,Nos,600.00

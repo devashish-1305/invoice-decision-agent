@@ -8,3 +8,16 @@ frontend/dist/
 .pytest_cache/
 *.db-wal
 *.db-shm
+.env.*
+!.env.example
+*.py[cod]
+*.db-journal
+*.sqlite*
+*.log
+.claude/settings.local.json
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+.vscode/
+.idea/

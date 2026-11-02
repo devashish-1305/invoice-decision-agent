@@ -3,7 +3,7 @@
 Read `PRD.md` before any work. It is the source of truth for scope, rules, scenarios and acceptance criteria. If a request conflicts with the PRD, ask before deviating.
 
 ## What this is
-A take-home for Zamp (AI Solutions Associate). Input: an invoice PDF. Output: Approve / Hold / Reject with every step and reason visible. Deadline is tight (Sunday evening IST) — prefer working and simple over clever.
+An invoice decision agent. Input: an invoice PDF. Output: Approve / Hold / Reject with every step and reason visible. Prefer working and simple over clever.
 
 ## Non-negotiable architecture rules
 1. **The LLM never decides.** Approve/Hold/Reject comes only from `backend/app/rules/` — pure, deterministic Python functions with no I/O and no LLM calls. Same input → same decision.
@@ -59,7 +59,7 @@ frontend/src/        pages: NewRun, LiveRun, Dashboard, RunDetail, Reference
 - Build in the PRD's phase order. Get the pipeline passing all scenarios from the CLI **before** touching the UI.
 - After each phase: run tests, run all 6 scenarios (H, E1–E5), report results in a short table (scenario, expected, actual).
 - Every rule gets unit tests for pass and fail cases. The decision function gets a test per scenario.
-- Keep code readable over abstract — the author must explain every file in a live interview.
+- Keep code readable over abstract — the author must explain every file.
 - No new dependencies or features outside the PRD without asking.
 - Never commit API keys; use `.env` (gitignored) and `.env.example`.
 

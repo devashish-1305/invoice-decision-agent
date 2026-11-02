@@ -8,7 +8,7 @@ type Line = { label: string; value: string; red?: boolean };
 
 const MONEY = new Set(["po_subtotal", "approved_to_date", "invoice_subtotal", "total_after", "limit", "matched_po_lines_value", "its_total", "this_total", "total", "lines_plus_charges", "subtotal", "tax"]);
 
-/** The numbers behind a check, as label/value lines. CUMULATIVE_PO gets the full breakdown from the brief. */
+/** The numbers behind a check, as label/value lines. CUMULATIVE_PO gets the full breakdown. */
 function breakdown(c: Check): Line[] {
   const e = c.evidence;
   if (c.code === "CUMULATIVE_PO" && e.po_subtotal !== undefined) {

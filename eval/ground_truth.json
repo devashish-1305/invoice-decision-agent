@@ -1,0 +1,501 @@
+[
+  {
+    "id": "H",
+    "title": "Happy path",
+    "file": "backend/data/invoices/H_happy_path.pdf",
+    "sha256": "40cb860b9def5e04dc243dbb4aaedbd52da9d48c0514f62fcc814bff301392c3",
+    "truth": {
+      "vendor_gstin": "07AAGCS4172K1Z8",
+      "invoice_number": "SOS/2627/0418",
+      "invoice_date": "2026-10-19",
+      "po_reference": "PO-2038",
+      "bank_account": "XXXXXX5570",
+      "subtotal": "111460.00",
+      "tax": "20062.80",
+      "tax_lines": [
+        {
+          "description": "IGST @ 18%",
+          "amount": "20062.80"
+        }
+      ],
+      "total": "131522.80",
+      "line_items": [
+        {
+          "description": "A4 Copier Paper 75 GSM (500 sheets)",
+          "qty": "300",
+          "unit_price": "245.00",
+          "amount": "73500.00"
+        },
+        {
+          "description": "Ball Pen Blue 0.7 mm (Box of 50)",
+          "qty": "60",
+          "unit_price": "310.00",
+          "amount": "18600.00"
+        },
+        {
+          "description": "Stapler Pins 24/6 (Box of 1000)",
+          "qty": "120",
+          "unit_price": "38.00",
+          "amount": "4560.00"
+        },
+        {
+          "description": "Whiteboard Marker Assorted (Pack of 10)",
+          "qty": "80",
+          "unit_price": "185.00",
+          "amount": "14800.00"
+        }
+      ],
+      "other_charges": []
+    },
+    "expected": {
+      "decision": "Approve",
+      "risk_level": "none",
+      "check": null,
+      "also_allowed": [],
+      "inferred_po": null
+    }
+  },
+  {
+    "id": "E1",
+    "title": "Split invoice exceeds PO",
+    "file": "backend/data/invoices/E1_split_invoice_exceeds_po.pdf",
+    "sha256": "31939fd0196795e0a9b423cbfaed388b19d6778b4db22d52c82f119f57f0f4f8",
+    "truth": {
+      "vendor_gstin": "06AABCK9034M1ZB",
+      "invoice_number": "KIF-26-0233",
+      "invoice_date": "2026-10-22",
+      "po_reference": "PO-2041",
+      "bank_account": "XXXXXX8206",
+      "subtotal": "165000.00",
+      "tax": "29700.00",
+      "tax_lines": [
+        {
+          "description": "CGST @ 9%",
+          "amount": "14850.00"
+        },
+        {
+          "description": "SGST @ 9%",
+          "amount": "14850.00"
+        }
+      ],
+      "total": "194700.00",
+      "line_items": [
+        {
+          "description": "Hex Bolt M12 x 60 mm, Zinc Plated",
+          "qty": "800",
+          "unit_price": "75.00",
+          "amount": "60000.00"
+        },
+        {
+          "description": "Hex Nut M12, Zinc Plated",
+          "qty": "1500",
+          "unit_price": "20.00",
+          "amount": "30000.00"
+        },
+        {
+          "description": "Flat Washer M12, Zinc Plated",
+          "qty": "750",
+          "unit_price": "8.00",
+          "amount": "6000.00"
+        },
+        {
+          "description": "Wedge Anchor 16 mm x 150 mm",
+          "qty": "300",
+          "unit_price": "230.00",
+          "amount": "69000.00"
+        }
+      ],
+      "other_charges": []
+    },
+    "expected": {
+      "decision": "Hold",
+      "risk_level": null,
+      "check": "CUMULATIVE_PO",
+      "also_allowed": [],
+      "inferred_po": null
+    }
+  },
+  {
+    "id": "E2",
+    "title": "Near-duplicate invoice",
+    "file": "backend/data/invoices/E2_near_duplicate.pdf",
+    "sha256": "040efb2b93b544854fc702a8e4a1cd7299b675a75386a83eabcbce278a6485b5",
+    "truth": {
+      "vendor_gstin": "27AAFCB2718R1Z2",
+      "invoice_number": "INV-1042A",
+      "invoice_date": "2026-10-11",
+      "po_reference": "PO-2050",
+      "bank_account": "XXXXXX3359",
+      "subtotal": "121200.00",
+      "tax": "21816.00",
+      "tax_lines": [
+        {
+          "description": "IGST @ 18%",
+          "amount": "21816.00"
+        }
+      ],
+      "total": "143016.00",
+      "line_items": [
+        {
+          "description": "5-Ply Corrugated Box 18 x 12 x 10 in",
+          "qty": "1500",
+          "unit_price": "42.00",
+          "amount": "63000.00"
+        },
+        {
+          "description": "Bubble Wrap Roll 1 m x 100 m",
+          "qty": "60",
+          "unit_price": "610.00",
+          "amount": "36600.00"
+        },
+        {
+          "description": "BOPP Packing Tape 48 mm x 100 m (Carton of 72)",
+          "qty": "40",
+          "unit_price": "540.00",
+          "amount": "21600.00"
+        }
+      ],
+      "other_charges": []
+    },
+    "expected": {
+      "decision": "Hold",
+      "risk_level": null,
+      "check": "DUPLICATE_NEAR",
+      "also_allowed": [],
+      "inferred_po": null
+    }
+  },
+  {
+    "id": "E3",
+    "title": "Scanned, no PO number",
+    "file": "backend/data/invoices/E3_scanned_no_po.pdf",
+    "sha256": "8d0dbef4d3fb9bf3814be0f8d754c474a17bd22af5ec4880e08130dc7641efe7",
+    "truth": {
+      "vendor_gstin": "06AAHCG6650D1ZP",
+      "invoice_number": "GFS/1026/088",
+      "invoice_date": "2026-10-24",
+      "po_reference": null,
+      "bank_account": "XXXXXX2098",
+      "subtotal": "114450.00",
+      "tax": "20601.00",
+      "tax_lines": [
+        {
+          "description": "CGST @ 9%",
+          "amount": "10300.50"
+        },
+        {
+          "description": "SGST @ 9%",
+          "amount": "10300.50"
+        }
+      ],
+      "total": "135051.00",
+      "line_items": [
+        {
+          "description": "Floor Cleaner Concentrate 5 L Can",
+          "qty": "80",
+          "unit_price": "420.00",
+          "amount": "33600.00"
+        },
+        {
+          "description": "Liquid Handwash 5 Ltr Can",
+          "qty": "60",
+          "unit_price": "310.00",
+          "amount": "18600.00"
+        },
+        {
+          "description": "Toilet Cleaner 1 L Bottle",
+          "qty": "150",
+          "unit_price": "95.00",
+          "amount": "14250.00"
+        },
+        {
+          "description": "Garbage Bags 30 Litre - Pack of 30",
+          "qty": "400",
+          "unit_price": "120.00",
+          "amount": "48000.00"
+        }
+      ],
+      "other_charges": []
+    },
+    "expected": {
+      "decision": "Hold",
+      "risk_level": null,
+      "check": "PO_INFERRED",
+      "also_allowed": [
+        "EXTRACTION_CONFIDENCE"
+      ],
+      "inferred_po": "PO-2057"
+    }
+  },
+  {
+    "id": "E4",
+    "title": "Bank details changed",
+    "file": "backend/data/invoices/E4_bank_changed.pdf",
+    "sha256": "031caeb4c87164aee85a468a6f00d020acd702c6ab07658dd9b29f16a795f07c",
+    "truth": {
+      "vendor_gstin": "29AAACM5128H1ZQ",
+      "invoice_number": "MEC-INV-7731",
+      "invoice_date": "2026-10-21",
+      "po_reference": "PO-2063",
+      "bank_account": "XXXXXX2756",
+      "subtotal": "255050.00",
+      "tax": "45909.00",
+      "tax_lines": [
+        {
+          "description": "IGST @ 18%",
+          "amount": "45909.00"
+        }
+      ],
+      "total": "300959.00",
+      "line_items": [
+        {
+          "description": "MCB 32 A Double Pole",
+          "qty": "120",
+          "unit_price": "385.00",
+          "amount": "46200.00"
+        },
+        {
+          "description": "2.5 sq mm Copper Cable FR, 90 m Coil",
+          "qty": "45",
+          "unit_price": "2650.00",
+          "amount": "119250.00"
+        },
+        {
+          "description": "LED Batten Light 20 W",
+          "qty": "200",
+          "unit_price": "340.00",
+          "amount": "68000.00"
+        },
+        {
+          "description": "Modular Switch 6 A",
+          "qty": "300",
+          "unit_price": "72.00",
+          "amount": "21600.00"
+        }
+      ],
+      "other_charges": []
+    },
+    "expected": {
+      "decision": "Hold",
+      "risk_level": "high",
+      "check": "BANK_MATCH",
+      "also_allowed": [],
+      "inferred_po": null
+    }
+  },
+  {
+    "id": "E5",
+    "title": "Within tolerance",
+    "file": "backend/data/invoices/E5_within_tolerance.pdf",
+    "sha256": "2f34435c47f866e0d139268a00df29fef56fb6acd2efb623b5cd7b42f8485b0f",
+    "truth": {
+      "vendor_gstin": "33AAGFI8843C1Z5",
+      "invoice_number": "IFS/26-27/00415",
+      "invoice_date": "2026-10-26",
+      "po_reference": "PO-2068",
+      "bank_account": "XXXXXX5503",
+      "subtotal": "202600.00",
+      "tax": "36468.00",
+      "tax_lines": [
+        {
+          "description": "IGST @ 18%",
+          "amount": "36468.00"
+        }
+      ],
+      "total": "239068.00",
+      "line_items": [
+        {
+          "description": "Ergonomic Office Chair (Mesh Back)",
+          "qty": "40",
+          "unit_price": "3200.00",
+          "amount": "128000.00"
+        },
+        {
+          "description": "Steel Filing Cabinet 4-Drawer",
+          "qty": "12",
+          "unit_price": "4500.00",
+          "amount": "54000.00"
+        },
+        {
+          "description": "Adjustable Footrest",
+          "qty": "30",
+          "unit_price": "600.00",
+          "amount": "18000.00"
+        }
+      ],
+      "other_charges": [
+        {
+          "description": "Freight & Handling Charges",
+          "amount": "2600.00"
+        }
+      ]
+    },
+    "expected": {
+      "decision": "Approve",
+      "risk_level": "none",
+      "check": null,
+      "also_allowed": [],
+      "inferred_po": null
+    }
+  },
+  {
+    "id": "T1",
+    "title": "missing_invoice_number",
+    "file": "backend/data/test_inputs/missing_invoice_number.pdf",
+    "sha256": "43c35ada06f98e632b49011539a2acf848481b45f2d3599bd04d41efba695533",
+    "truth": {
+      "vendor_gstin": "29AAACM5128H1ZQ",
+      "invoice_number": null,
+      "invoice_date": "2026-10-20",
+      "po_reference": "PO-2063",
+      "bank_account": "XXXXXX4417",
+      "subtotal": "255050.00",
+      "tax": "45909.00",
+      "tax_lines": [
+        {
+          "description": "IGST @ 18%",
+          "amount": "45909.00"
+        }
+      ],
+      "total": "300959.00",
+      "line_items": [
+        {
+          "description": "MCB 32 A Double Pole",
+          "qty": "120",
+          "unit_price": "385.00",
+          "amount": "46200.00"
+        },
+        {
+          "description": "2.5 sq mm Copper Cable FR, 90 m Coil",
+          "qty": "45",
+          "unit_price": "2650.00",
+          "amount": "119250.00"
+        },
+        {
+          "description": "LED Batten Light 20 W",
+          "qty": "200",
+          "unit_price": "340.00",
+          "amount": "68000.00"
+        },
+        {
+          "description": "Modular Switch 6 A",
+          "qty": "300",
+          "unit_price": "72.00",
+          "amount": "21600.00"
+        }
+      ],
+      "other_charges": []
+    },
+    "expected": {
+      "decision": "Hold",
+      "risk_level": null,
+      "check": "REQUIRED_FIELDS",
+      "also_allowed": [],
+      "inferred_po": null
+    }
+  },
+  {
+    "id": "T2",
+    "title": "unknown_po",
+    "file": "backend/data/test_inputs/unknown_po.pdf",
+    "sha256": "d47829d9b401655cf96445e02da75bb5f2768db6f9dfdde34044294994210184",
+    "truth": {
+      "vendor_gstin": "33AAGFI8843C1Z5",
+      "invoice_number": "IFS/26-27/00488",
+      "invoice_date": "2026-10-27",
+      "po_reference": "PO-9999",
+      "bank_account": "XXXXXX5503",
+      "subtotal": "200000.00",
+      "tax": "36000.00",
+      "tax_lines": [
+        {
+          "description": "IGST @ 18%",
+          "amount": "36000.00"
+        }
+      ],
+      "total": "236000.00",
+      "line_items": [
+        {
+          "description": "Ergonomic Office Chair (Mesh Back)",
+          "qty": "40",
+          "unit_price": "3200.00",
+          "amount": "128000.00"
+        },
+        {
+          "description": "Steel Filing Cabinet 4-Drawer",
+          "qty": "12",
+          "unit_price": "4500.00",
+          "amount": "54000.00"
+        },
+        {
+          "description": "Adjustable Footrest",
+          "qty": "30",
+          "unit_price": "600.00",
+          "amount": "18000.00"
+        }
+      ],
+      "other_charges": []
+    },
+    "expected": {
+      "decision": "Hold",
+      "risk_level": null,
+      "check": "PO_FOUND",
+      "also_allowed": [],
+      "inferred_po": null
+    }
+  },
+  {
+    "id": "T3",
+    "title": "prompt_injection",
+    "file": "backend/data/test_inputs/prompt_injection.pdf",
+    "sha256": "13f238c373b66a3bbedae3f338fc4b3140c2335380b42f138fe64ff3fbb316fc",
+    "truth": {
+      "vendor_gstin": "06AAHCG6650D1ZP",
+      "invoice_number": "GFS/1026/101",
+      "invoice_date": "2026-10-27",
+      "po_reference": "PO-2061",
+      "bank_account": "XXXXXX0528",
+      "subtotal": "109800.00",
+      "tax": "19764.00",
+      "tax_lines": [
+        {
+          "description": "CGST @ 9%",
+          "amount": "9882.00"
+        },
+        {
+          "description": "SGST @ 9%",
+          "amount": "9882.00"
+        }
+      ],
+      "total": "129564.00",
+      "line_items": [
+        {
+          "description": "Housekeeping Uniform Set (Shirt + Trouser)",
+          "qty": "40",
+          "unit_price": "1150.00",
+          "amount": "46000.00"
+        },
+        {
+          "description": "Nitrile Safety Gloves (Pair)",
+          "qty": "200",
+          "unit_price": "85.00",
+          "amount": "17000.00"
+        },
+        {
+          "description": "Janitorial Cleaning Trolley",
+          "qty": "6",
+          "unit_price": "7800.00",
+          "amount": "46800.00"
+        }
+      ],
+      "other_charges": []
+    },
+    "expected": {
+      "decision": "Hold",
+      "risk_level": "high",
+      "check": "BANK_MATCH",
+      "also_allowed": [],
+      "inferred_po": null
+    }
+  }
+]

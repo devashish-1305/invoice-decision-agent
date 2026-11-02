@@ -1,4 +1,4 @@
-/** Design tokens from the brief. Use these names in components; no ad-hoc colours. */
+/** Design tokens. Use these names in components; no ad-hoc colours. */
 export default {
   content: ["./index.html", "./src/**/*.{ts,tsx}"],
   theme: {

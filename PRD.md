@@ -1,6 +1,6 @@
-# PRD — Invoice Decision Agent (Zamp ASA Case Study, PS-1)
+# PRD — Invoice Decision Agent
 
-Owner: Devashish Dwivedi · Deadline: Sunday 1 Nov 2026, evening IST · Status: **frozen** — changes only to fix a bug found during the build
+Owner: Devashish Dwivedi · Status: **frozen** — changes only to fix a bug found during the build
 
 ---
 
@@ -34,7 +34,7 @@ A mid-size company receives hundreds of vendor invoices a month as PDFs. An AP c
 - "Reset demo data" so every demo starts from the same state.
 - Deployed at a public URL.
 
-### Out of scope (say "in production this would…" in the interview)
+### Out of scope — production would…
 - Email inbox ingestion (production: hook into the AP mailbox).
 - ERP integration (production: read POs/vendors from SAP/NetSuite/Tally).
 - GRN / three-way match (we do two-way: invoice ↔ PO).
@@ -88,7 +88,7 @@ Every stage writes its input, output, duration and status to the DB and streams 
 
 **Approve requires every check to be PASS.** Therefore a missing or low-confidence financial field, an inferred PO, a probable duplicate, or any failed stage can never produce Approve.
 
-Thresholds live in one config file (`tolerance_pct = 2.0`, `confidence_min = 0.80`, `near_dup_days = 30`, …) so they can be tuned per client — mention this in the interview: "every client has different tolerances; that's configuration, not code."
+Thresholds live in one config file, `backend/app/config.py` (`tolerance_pct = 2.0`, `confidence_min = 0.80`, `near_dup_days = 30`, …). Changing one requires a code change and a redeploy. Per-client configuration is future work.
 
 ### 5.3 Exception routing (for Hold / Reject)
 | Trigger | Routed to | Drafted message |
@@ -126,7 +126,7 @@ Seed data:
 
 ## 7. UI
 
-Must look clean and professional — the brief says the UI is graded. Light theme, one accent colour, decision colours green / amber / red.
+Must look clean and professional. Light theme, one accent colour, decision colours green / amber / red.
 
 1. **New run** — drag-and-drop upload + "Sample invoices" cards (one per scenario, with a one-line label). One click starts a run.
 2. **Live run view** — vertical stage rail (6 stages) lighting up as events stream (SSE). Each stage expands to show its output:
@@ -136,7 +136,7 @@ Must look clean and professional — the brief says the UI is graded. Light them
    - Decision card: big decision badge, AI summary, routed-to, drafted message (copy button).
 3. **Dashboard** — KPI tiles (invoices processed, approved / held / rejected, ₹ value auto-approved, ₹ value stopped), table of runs (time, vendor, invoice no., amount, decision, top reason), filter by decision, click → run detail.
 4. **Run detail** — same as live view, from history.
-5. **Reference data** — read-only tables of vendors and POs (with invoiced-to-date), so the interviewer can see what the process matched against.
+5. **Reference data** — read-only tables of vendors and POs (with invoiced-to-date), so a viewer can see what the process matched against.
 
 ## 8. Architecture
 
@@ -148,10 +148,10 @@ Must look clean and professional — the brief says the UI is graded. Light them
 - **Deploy:** Render or Railway, single web service.
 - **Data lifecycle:** on startup, create tables and seed reference data **only if missing**. `POST /api/reset` explicitly restores seed data and clears run history. Normal runs preserve history. (Free hosting may wipe the disk on redeploy — acceptable for a demo; production uses Postgres.)
 
-## 9. Evaluation (differentiator — do if time allows)
+## 9. Evaluation
 - `eval/` — a labelled ground-truth JSON for each test invoice.
 - `python -m eval.run` prints field-level extraction accuracy and decision accuracy across all scenarios.
-- Show the table in the video/README: "Extraction: 98% field accuracy on 8 invoices; decisions: 6/6 correct."
+- Results: see eval/results.md (single run, 9 synthetic invoices).
 
 ## 10. Acceptance criteria
 - [ ] All 6 scenarios (H, E1–E5) produce the expected decision, 3 runs in a row, after "Reset demo data".
@@ -167,18 +167,16 @@ Must look clean and professional — the brief says the UI is graded. Light them
 - [ ] Ledger tests: Hold and Reject never insert into the approved-invoice ledger; a transaction that fails mid-way leaves PO consumption unchanged; re-running an approved invoice creates a new run and returns Reject via `DUPLICATE_EXACT` (no uniqueness error).
 
 ## 11. Build plan
-| When | Milestone |
+| Phase | Milestone |
 |---|---|
-| Fri | Seed data + invoice generator; extraction + validate + match + rules + decide working from CLI on all scenarios |
-| Sat AM | FastAPI + SSE + DB; frontend live run view |
-| Sat PM | Dashboard, run detail, reference data, reset; **deploy** |
-| Sun AM | Polish, eval script, README, rehearse all scenarios on the live URL |
-| Sun PM | Record 5-min video, submit |
+| Phase 1: data + pipeline | Seed data + invoice generator; extraction + validate + match + rules + decide working from CLI on all scenarios |
+| Phase 2: API + UI | FastAPI + SSE + DB; frontend live run view; dashboard, run detail, reference data, reset |
+| Phase 3: deploy + docs | Deploy; polish, eval script, README, rehearse all scenarios on the live URL |
 
-## 12. Assumptions (note for the interview)
+## 12. Assumptions
 - Two-way match (invoice ↔ PO); GRN not available.
 - One invoice may cover part of one PO; an invoice spanning multiple POs is out of scope.
-- Tolerance 2% and 180-day date window are client-configurable defaults.
+- Tolerance 2% and 180-day date window are defaults in config; per-client configuration is future work.
 - INR / GST only; multi-currency would add an FX step.
 - Inferred POs are never auto-approved, regardless of confidence.
 - Only approved invoices consume PO balance.

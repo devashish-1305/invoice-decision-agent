@@ -1,7 +1,7 @@
 """Settings and every tunable threshold (PRD section 5).
 
-Rule code never contains a number: it reads it from here, so a different client can
-have different tolerances without a code change.
+All thresholds live here; rule code never contains a number. Changing one needs a code
+change and a redeploy.
 """
 import os
 from dataclasses import dataclass
